@@ -39,9 +39,8 @@ nsis:
 
 # Las actualizaciones se publican como GitHub Releases. El programa solo descarga
 # el instalador: ningún dato de pacientes sale de la computadora de la clínica.
-# TODO: reemplazar "owner" por el usuario u organización real de GitHub.
 publish:
   provider: github
-  owner: CAMBIAR-POR-TU-USUARIO-DE-GITHUB
+  owner: proyecto1web100-png
   repo: dmedic
   releaseType: release
