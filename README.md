@@ -61,6 +61,44 @@ toda operación pasa por un canal IPC concreto y validado.
 | Plantillas de tratamiento del doctor | Motor listo; falta pantalla de gestión |
 | Exportación a Excel/CSV | No incluida (descartada por decisión de producto) |
 
+## Cómo publicar una actualización
+
+La aplicación busca versiones nuevas en GitHub Releases. Descarga solo el
+programa: **ninguna información de pacientes sale de la computadora de la
+clínica**, y si no hay internet todo lo demás funciona igual.
+
+Antes de la primera publicación, en `electron-builder.yml` hay que reemplazar
+`owner` por el usuario real de GitHub.
+
+```bash
+# 1. Subir el número de versión en package.json (1.0.0 → 1.1.0)
+# 2. Confirmar que todo pasa
+npm run verificar
+
+# 3. Publicar (requiere la variable GH_TOKEN con un token de GitHub)
+npm run publicar
+```
+
+Eso genera el instalador y lo sube como release. La próxima vez que el doctor
+abra DMedic verá el aviso en Configuración, y decide cuándo instalarlo: nunca
+se actualiza solo ni a mitad de una consulta.
+
+### Reglas al cambiar la base de datos
+
+- **Nunca se edita una migración ya publicada.** Se agrega una nueva al final
+  del arreglo `MIGRACIONES` en `src/main/db/migraciones.ts`.
+- Antes de aplicar cualquier migración pendiente, el programa guarda una copia
+  intacta en `backups/` con el nombre `dmedic-pre-actualizacion-vN-…`.
+- Si alguien instala una versión anterior sobre datos ya migrados, el programa
+  se niega a abrir y lo explica, en lugar de operar contra un esquema
+  desconocido.
+
+### Si una actualización sale mal
+
+1. Instalar el `.exe` de la versión anterior (guarda un archivo de cada versión
+   que entregues).
+2. Restaurar desde Configuración la copia `dmedic-pre-actualizacion-…`.
+
 ## Notas de seguridad
 
 - Contraseña con Argon2id; bloqueo progresivo tras 5 intentos fallidos.
