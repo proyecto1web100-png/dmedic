@@ -1,0 +1,13 @@
+node_modules/
+out/
+dist/
+*.log
+.DS_Store
+
+# Nunca subir datos de pacientes ni copias de la base
+*.db
+*.db-wal
+*.db-shm
+expedientes/
+backups/
+*.tsbuildinfo

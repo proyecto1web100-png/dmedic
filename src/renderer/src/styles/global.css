@@ -1,0 +1,171 @@
+@import 'tailwindcss';
+
+/* El tema se conmuta con la clase .oscuro en <html>, no por preferencia del sistema:
+   quien decide es el doctor desde Configuración. */
+@custom-variant oscuro (&:where(.oscuro, .oscuro *));
+
+@theme {
+  --color-marca-50: #eefbf7;
+  --color-marca-100: #d5f5ec;
+  --color-marca-200: #aeead9;
+  --color-marca-300: #79d8c1;
+  --color-marca-400: #45bda3;
+  --color-marca-500: #23a189;
+  --color-marca-600: #17816f;
+  --color-marca-700: #14675b;
+  --color-marca-800: #14524a;
+  --color-marca-900: #13453e;
+
+  --color-lienzo: #f4f7f8;
+  --color-superficie: #ffffff;
+  --color-borde: #e2e9ec;
+  --color-tinta: #16202b;
+  --color-tinta-suave: #5b6b7a;
+  --color-tinta-tenue: #8a9aa8;
+
+  --font-sans: 'Segoe UI', system-ui, -apple-system, sans-serif;
+}
+
+:root {
+  --lienzo: #f4f7f8;
+  --superficie: #ffffff;
+  --superficie-alta: #ffffff;
+  --borde: #e2e9ec;
+  --tinta: #16202b;
+  --tinta-suave: #5b6b7a;
+  --tinta-tenue: #8a9aa8;
+  --sombra: 0 1px 2px rgb(22 32 43 / 0.05), 0 4px 12px rgb(22 32 43 / 0.04);
+  --escala-texto: 1;
+}
+
+.oscuro {
+  --lienzo: #0e1518;
+  --superficie: #161f23;
+  --superficie-alta: #1c272c;
+  --borde: #2a373d;
+  --tinta: #e8eef0;
+  --tinta-suave: #9fb0b8;
+  --tinta-tenue: #6d8089;
+  --sombra: 0 1px 2px rgb(0 0 0 / 0.3), 0 4px 12px rgb(0 0 0 / 0.25);
+}
+
+.texto-grande {
+  --escala-texto: 1.125;
+}
+
+html,
+body,
+#raiz {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--lienzo);
+  color: var(--tinta);
+  font-family: var(--font-sans);
+  font-size: calc(15px * var(--escala-texto));
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+/* Nada de selección de texto accidental al hacer doble clic en la interfaz;
+   el contenido clínico sí es seleccionable. */
+button,
+label,
+nav {
+  user-select: none;
+}
+
+::selection {
+  background: var(--color-marca-200);
+  color: var(--color-marca-900);
+}
+
+@layer components {
+  .superficie {
+    background: var(--superficie);
+    border: 1px solid var(--borde);
+    border-radius: 12px;
+    box-shadow: var(--sombra);
+  }
+
+  .campo-base {
+    width: 100%;
+    background: var(--superficie);
+    border: 1px solid var(--borde);
+    border-radius: 8px;
+    padding: 0.5rem 0.7rem;
+    color: var(--tinta);
+    font-size: 0.9375rem;
+    line-height: 1.4;
+    transition:
+      border-color 120ms ease,
+      box-shadow 120ms ease;
+  }
+
+  .campo-base::placeholder {
+    color: var(--tinta-tenue);
+  }
+
+  .campo-base:focus {
+    outline: none;
+    border-color: var(--color-marca-500);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-marca-500) 18%, transparent);
+  }
+
+  .campo-base:disabled {
+    background: color-mix(in srgb, var(--tinta-tenue) 8%, transparent);
+    cursor: not-allowed;
+  }
+
+  .campo-invalido {
+    border-color: #dc2626;
+  }
+
+  .campo-invalido:focus {
+    border-color: #dc2626;
+    box-shadow: 0 0 0 3px rgb(220 38 38 / 0.16);
+  }
+
+  .etiqueta {
+    display: block;
+    font-size: 0.78125rem;
+    font-weight: 600;
+    color: var(--tinta-suave);
+    margin-bottom: 0.3rem;
+    letter-spacing: 0.01em;
+  }
+
+  .desplazable {
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--borde) transparent;
+  }
+
+  .desplazable::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  .desplazable::-webkit-scrollbar-thumb {
+    background: var(--borde);
+    border-radius: 6px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+
+  .desplazable::-webkit-scrollbar-thumb:hover {
+    background: var(--tinta-tenue);
+    background-clip: content-box;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

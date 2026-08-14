@@ -1,0 +1,5 @@
+export * from './paciente'
+export * from './consulta'
+export * from './catalogo'
+export * from './cita'
+export * from './sistema'
