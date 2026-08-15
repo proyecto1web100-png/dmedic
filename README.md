@@ -45,6 +45,34 @@ src/
 La ventana no tiene acceso a Node, al sistema de archivos ni a la base de datos:
 toda operación pasa por un canal IPC concreto y validado.
 
+## Roles y permisos
+
+| | Doctor | Secretaria | Administrador |
+|---|:---:|:---:|:---:|
+| Ver expedientes y consultas | Sí | **No** | Sí |
+| Crear y editar consultas | Sí | No | Sí |
+| Registrar pacientes y editar contacto | Sí | Sí | Sí |
+| Alergias, antecedentes, crónicos | Sí | No | Sí |
+| Ver la agenda | Sí | Sí | Sí |
+| **Crear, mover y cancelar citas** | **No** | **Sí** | No |
+| Gestionar usuarios | No | No | Sí |
+| Restaurar copias de seguridad | No | No | Sí |
+| Eliminar expedientes definitivamente | No | No | Sí |
+
+Administrador es un permiso adicional que se suma al rol; hoy lo tiene el primer
+usuario creado.
+
+Reglas que se aplican en el proceso principal, no en la interfaz:
+
+- Una consulta solo la corrige **su autor**, y solo el mismo día. Los demás
+  doctores dejan constancia mediante adendas fechadas.
+- Los expedientes son compartidos entre doctores, y **cada apertura queda
+  registrada** en la auditoría con el nombre de quien la hizo.
+- La receta se firma con el nombre del doctor que atendió la consulta, no con
+  el configurado a nivel de clínica.
+- La cita de control que un doctor indica al cerrar una consulta se agenda sola:
+  la genera el acto clínico, no una persona.
+
 ## Módulos
 
 | Módulo | Estado |

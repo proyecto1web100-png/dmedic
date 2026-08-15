@@ -72,11 +72,17 @@ async function ejecutar(): Promise<void> {
     auth.instalar({ nombreDoctor: 'Otro', nombreClinica: 'X', password: 'otracontrasena' })
   )
 
+  const idDoctor1 = auth.estado().sesion?.usuarioId as number
+  comprobar('el primer usuario es doctor y administrador', auth.estado().sesion?.esAdministrador === true)
+
   auth.salir()
   comprobar('cerrar sesión deja el sistema bloqueado', !auth.estado().autenticado)
+  comprobar('la pantalla de acceso lista a los usuarios', auth.estado().usuarios.length === 1)
 
-  await debeFallar('rechaza una contraseña incorrecta', () => auth.entrar('incorrecta'))
-  await auth.entrar('contrasena-de-prueba')
+  await debeFallar('rechaza una contraseña incorrecta', () =>
+    auth.entrar(idDoctor1, 'incorrecta')
+  )
+  await auth.entrar(idDoctor1, 'contrasena-de-prueba')
   comprobar('acepta la contraseña correcta', auth.estado().autenticado)
 
   grupo('Catálogos')
@@ -597,6 +603,116 @@ async function ejecutar(): Promise<void> {
     backups.restaurar(join(carpetaTemporal, 'no-existe.db'))
   )
 
+  grupo('Equipo y roles')
+  const idDoctor2 = await auth.crearUsuario({
+    nombre: 'Doctor 2',
+    rol: 'doctor',
+    password: 'clave-doctor-dos'
+  })
+  const idSecretaria = await auth.crearUsuario({
+    nombre: 'Secretaria',
+    rol: 'secretaria',
+    password: 'clave-secretaria'
+  })
+  comprobar('crea un segundo doctor', idDoctor2 > 0)
+  comprobar('crea la secretaria', idSecretaria > 0)
+  comprobar('el equipo tiene tres usuarios', auth.listarUsuarios().length === 3)
+
+  await debeFallar('rechaza un nombre de usuario repetido', () =>
+    auth.crearUsuario({ nombre: 'Doctor 2', rol: 'doctor', password: 'otra-clave-larga' })
+  )
+  await debeFallar('rechaza una contraseña demasiado corta', () =>
+    auth.crearUsuario({ nombre: 'Doctor 3', rol: 'doctor', password: 'corta' })
+  )
+  await debeFallar('no permite quedarse sin administrador', () =>
+    auth.actualizarUsuario(idDoctor1, { nombre: 'Doctor 1', rol: 'doctor', esAdministrador: false })
+  )
+  await debeFallar('no permite desactivar el propio usuario', () =>
+    auth.alternarUsuario(idDoctor1, false)
+  )
+
+  grupo('Permisos de la secretaria')
+  auth.salir()
+  await auth.entrar(idSecretaria, 'clave-secretaria')
+  comprobar('la secretaria debe cambiar su contraseña inicial', auth.estado().sesion?.debeCambiarPassword === true)
+  await auth.cambiarPassword('clave-secretaria', 'clave-secretaria')
+  comprobar('tras cambiarla ya no se le exige', auth.estado().sesion?.debeCambiarPassword === false)
+
+  const permisosSecretaria = new Set(auth.estado().permisos)
+  comprobar('la secretaria gestiona la agenda', permisosSecretaria.has('citas.gestionar'))
+  comprobar('la secretaria registra pacientes', permisosSecretaria.has('pacientes.registrar'))
+  comprobar('la secretaria NO ve datos clínicos', !permisosSecretaria.has('pacientes.ver_clinico'))
+  comprobar('la secretaria NO crea consultas', !permisosSecretaria.has('consultas.crear'))
+  comprobar('la secretaria NO gestiona usuarios', !permisosSecretaria.has('usuarios.gestionar'))
+
+  comprobar('la secretaria ve la ficha de contacto', pacientes.ficha(idPaciente).paciente.id === idPaciente)
+  comprobar(
+    'la ficha no incluye información clínica',
+    !Object.prototype.hasOwnProperty.call(pacientes.ficha(idPaciente), 'alergias')
+  )
+  comprobar(
+    'la secretaria puede agendar',
+    citas.crear({ pacienteId: idPaciente, fecha: manana, hora: '08:00' }).id > 0
+  )
+  await debeFallar('la secretaria no puede listar usuarios', () => auth.listarUsuarios())
+
+  grupo('Permisos del doctor')
+  auth.salir()
+  await auth.entrar(idDoctor2, 'clave-doctor-dos')
+  await auth.cambiarPassword('clave-doctor-dos', 'clave-doctor-dos')
+
+  const permisosDoctor = new Set(auth.estado().permisos)
+  comprobar('el doctor ve datos clínicos', permisosDoctor.has('pacientes.ver_clinico'))
+  comprobar('el doctor crea consultas', permisosDoctor.has('consultas.crear'))
+  comprobar('el doctor ve la agenda', permisosDoctor.has('citas.ver'))
+  comprobar('el doctor NO gestiona la agenda', !permisosDoctor.has('citas.gestionar'))
+  comprobar('el doctor sin administración NO gestiona usuarios', !permisosDoctor.has('usuarios.gestionar'))
+  comprobar('el doctor NO elimina expedientes', !permisosDoctor.has('pacientes.eliminar'))
+
+  grupo('Autoría de consultas entre doctores')
+  const idConsultaAjena = consultas.crear({
+    pacienteId: idPaciente,
+    motivo: 'Consulta registrada por el Doctor 2',
+    sinProximaCita: true,
+    signos: consulta.signos,
+    diagnosticos: [],
+    medicamentos: []
+  })
+  comprobar(
+    'la consulta guarda a su autor',
+    consultas.obtener(idConsultaAjena).usuarioId === idDoctor2
+  )
+  comprobar(
+    'la consulta muestra el nombre del doctor que la atendió',
+    consultas.obtener(idConsultaAjena).nombreDoctor === 'Doctor 2'
+  )
+  comprobar('su autor puede editarla el mismo día', consultas.obtener(idConsultaAjena).editable)
+
+  auth.salir()
+  await auth.entrar(idDoctor1, 'contrasena-de-prueba')
+  comprobar(
+    'otro doctor la ve pero no la puede editar',
+    consultas.obtener(idConsultaAjena).editable === false
+  )
+  await debeFallar('editar una consulta ajena queda bloqueado', () =>
+    consultas.actualizar(idConsultaAjena, {
+      pacienteId: idPaciente,
+      motivo: 'Intento de modificación ajena',
+      sinProximaCita: true,
+      signos: consulta.signos,
+      diagnosticos: [],
+      medicamentos: []
+    })
+  )
+  comprobar(
+    'sí puede dejar constancia con una adenda',
+    consultas.agregarAdenda(idConsultaAjena, 'Adenda de otro doctor sobre la evolución.') > 0
+  )
+  comprobar(
+    'los expedientes son compartidos entre doctores',
+    pacientes.expediente(idPaciente).paciente.id === idPaciente
+  )
+
   grupo('Actualizaciones y versionado del esquema')
   const migraciones = await import('./db/migraciones')
   const { rutaBaseDatos, directorioBackups } = await import('./db/rutas')
@@ -644,7 +760,7 @@ async function ejecutar(): Promise<void> {
   comprobar('los pacientes sobreviven al reinicio', pacientes.buscar('Pérez').length === 2)
   comprobar(
     'las consultas sobreviven al reinicio',
-    consultas.historial(idPaciente).length === 4
+    consultas.historial(idPaciente).length === 5
   )
   comprobar(
     'las alergias sobreviven al reinicio',
@@ -676,15 +792,23 @@ async function ejecutar(): Promise<void> {
   auth.salir()
   for (let intento = 0; intento < 4; intento++) {
     try {
-      await auth.entrar('incorrecta')
+      await auth.entrar(idDoctor1, 'incorrecta')
     } catch {
       // Los cuatro primeros fallos solo suman al contador.
     }
   }
-  await debeFallar('bloquea la cuenta al quinto intento fallido', () => auth.entrar('incorrecta'))
-  await debeFallar('el bloqueo también rechaza la contraseña correcta', () =>
-    auth.entrar('contrasena-de-prueba')
+  await debeFallar('bloquea la cuenta al quinto intento fallido', () =>
+    auth.entrar(idDoctor1, 'incorrecta')
   )
+  await debeFallar('el bloqueo también rechaza la contraseña correcta', () =>
+    auth.entrar(idDoctor1, 'contrasena-de-prueba')
+  )
+  await auth.entrar(idSecretaria, 'clave-secretaria')
+  comprobar(
+    'bloquear a un usuario no deja fuera a los demás',
+    auth.estado().sesion?.usuarioId === idSecretaria
+  )
+  auth.salir()
 
   grupo('Simulación de una actualización real')
   // Se lleva la base al estado de la versión anterior (sin agenda) y se vuelve a
@@ -707,7 +831,7 @@ async function ejecutar(): Promise<void> {
   )
   comprobar(
     'crea una copia previa antes de modificar el esquema',
-    readdirSync(directorioBackups()).some((n) => n.startsWith('dmedic-pre-actualizacion-v1-'))
+    readdirSync(directorioBackups()).some((n) => n.startsWith('dmedic-pre-actualizacion-'))
   )
   comprobar(
     'ningún paciente se pierde en la actualización',
@@ -715,7 +839,7 @@ async function ejecutar(): Promise<void> {
   )
   comprobar(
     'las consultas sobreviven a la actualización',
-    consultas.historial(idPaciente).length === 4
+    consultas.historial(idPaciente).length === 5
   )
   comprobar('la tabla nueva queda disponible', citas.dePaciente(idPaciente).length === 0)
 

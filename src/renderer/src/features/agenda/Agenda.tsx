@@ -2,9 +2,10 @@ import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { CalendarDays, ChevronLeft, ChevronRight, Plus } from 'lucide-react'
 import { Boton } from '../../components/ui/Boton'
-import { Cargando, Vacio } from '../../components/ui/Varios'
+import { Aviso, Cargando, Vacio } from '../../components/ui/Varios'
 import { api, mensajeDeError, pedir } from '../../lib/api'
 import { useNotificar } from '../../app/Notificaciones'
+import { useSesion } from '../../app/Sesion'
 import { hoyIso } from '@shared/lib/fecha'
 import {
   celdasDelMes,
@@ -35,6 +36,10 @@ export function Agenda(): React.JSX.Element {
     null
   )
   const [seleccionada, setSeleccionada] = useState<CitaConPaciente | null>(null)
+
+  const { puede } = useSesion()
+  const gestiona = puede('citas.gestionar')
+  const puedeAtender = puede('consultas.crear')
 
   const cargar = useCallback(async () => {
     try {
@@ -105,15 +110,27 @@ export function Agenda(): React.JSX.Element {
               </button>
             ))}
           </div>
-          <Boton
-            variante="primario"
-            iconoIzquierda={<Plus size={16} />}
-            onClick={() => setFormulario({ fecha: referencia })}
-          >
-            Nueva cita
-          </Boton>
+          {gestiona && (
+            <Boton
+              variante="primario"
+              iconoIzquierda={<Plus size={16} />}
+              onClick={() => setFormulario({ fecha: referencia })}
+            >
+              Nueva cita
+            </Boton>
+          )}
         </div>
       </header>
+
+      {!gestiona && (
+        <div className="mb-4">
+          <Aviso tono="info">
+            Está viendo la agenda en modo consulta. Crear, mover o cancelar citas corresponde a la
+            secretaría. Las citas de control que usted indique al cerrar una consulta se agendan
+            automáticamente.
+          </Aviso>
+        </div>
+      )}
 
       {cargando ? (
         <Cargando />
@@ -131,6 +148,7 @@ export function Agenda(): React.JSX.Element {
         <VistaSemana
           referencia={referencia}
           citasDe={citasDe}
+          puedeAgendar={gestiona}
           onAgendar={(fecha) => setFormulario({ fecha })}
           onCita={setSeleccionada}
         />
@@ -138,6 +156,7 @@ export function Agenda(): React.JSX.Element {
         <VistaDia
           fecha={referencia}
           citas={citasDe(referencia)}
+          puedeAgendar={gestiona}
           onAgendar={() => setFormulario({ fecha: referencia })}
           onCita={setSeleccionada}
         />
@@ -154,6 +173,8 @@ export function Agenda(): React.JSX.Element {
       {seleccionada && (
         <PanelCita
           cita={seleccionada}
+          puedeGestionar={gestiona}
+          puedeAtender={puedeAtender}
           onCerrar={() => setSeleccionada(null)}
           onEditar={() => {
             setFormulario({ cita: seleccionada })
@@ -257,11 +278,13 @@ function VistaMes({
 function VistaSemana({
   referencia,
   citasDe,
+  puedeAgendar,
   onAgendar,
   onCita
 }: {
   referencia: string
   citasDe: (fecha: string) => CitaConPaciente[]
+  puedeAgendar: boolean
   onAgendar: (fecha: string) => void
   onCita: (cita: CitaConPaciente) => void
 }): React.JSX.Element {
@@ -294,12 +317,14 @@ function VistaSemana({
               {delDia.map((cita) => (
                 <TarjetaCita key={cita.id} cita={cita} onClick={() => onCita(cita)} />
               ))}
-              <button
-                onClick={() => onAgendar(fecha)}
-                className="mt-auto rounded-lg border border-dashed border-[var(--borde)] py-1.5 text-[0.75rem] text-[var(--tinta-tenue)] transition-colors hover:border-marca-400 hover:text-marca-600"
-              >
-                + Agendar
-              </button>
+              {puedeAgendar && (
+                <button
+                  onClick={() => onAgendar(fecha)}
+                  className="mt-auto rounded-lg border border-dashed border-[var(--borde)] py-1.5 text-[0.75rem] text-[var(--tinta-tenue)] transition-colors hover:border-marca-400 hover:text-marca-600"
+                >
+                  + Agendar
+                </button>
+              )}
             </div>
           </div>
         )
@@ -311,11 +336,13 @@ function VistaSemana({
 function VistaDia({
   fecha,
   citas,
+  puedeAgendar,
   onAgendar,
   onCita
 }: {
   fecha: string
   citas: CitaConPaciente[]
+  puedeAgendar: boolean
   onAgendar: () => void
   onCita: (cita: CitaConPaciente) => void
 }): React.JSX.Element {
@@ -327,9 +354,11 @@ function VistaDia({
           titulo="Sin citas este día"
           descripcion={esHoy(fecha) ? 'No hay nada agendado para hoy.' : undefined}
           accion={
-            <Boton variante="primario" iconoIzquierda={<Plus size={16} />} onClick={onAgendar}>
-              Agendar cita
-            </Boton>
+            puedeAgendar && (
+              <Boton variante="primario" iconoIzquierda={<Plus size={16} />} onClick={onAgendar}>
+                Agendar cita
+              </Boton>
+            )
           }
         />
       ) : (
@@ -337,12 +366,14 @@ function VistaDia({
           {citas.map((cita) => (
             <TarjetaCita key={cita.id} cita={cita} amplia onClick={() => onCita(cita)} />
           ))}
-          <button
-            onClick={onAgendar}
-            className="rounded-lg border border-dashed border-[var(--borde)] py-2.5 text-[0.875rem] text-[var(--tinta-tenue)] transition-colors hover:border-marca-400 hover:text-marca-600"
-          >
-            + Agendar otra cita
-          </button>
+          {puedeAgendar && (
+            <button
+              onClick={onAgendar}
+              className="rounded-lg border border-dashed border-[var(--borde)] py-2.5 text-[0.875rem] text-[var(--tinta-tenue)] transition-colors hover:border-marca-400 hover:text-marca-600"
+            >
+              + Agendar otra cita
+            </button>
+          )}
         </div>
       )}
     </div>

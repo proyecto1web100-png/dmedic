@@ -2,7 +2,12 @@ import { pacienteInputSchema } from '@shared/validation/paciente'
 import { nombreCompleto } from '@shared/lib/paciente'
 import * as repo from '../repositories/paciente'
 import { auditar } from '../audit/auditoria'
-import type { ExpedienteResumen, PacienteConResumen, PacienteInput } from '@shared/types'
+import type {
+  ExpedienteResumen,
+  FichaPaciente,
+  PacienteConResumen,
+  PacienteInput
+} from '@shared/types'
 
 export class ErrorIdentidadDuplicada extends Error {
   readonly codigo = 'IDENTIDAD_DUPLICADA'
@@ -80,10 +85,33 @@ export function buscar(
   return repo.buscar(texto, opciones)
 }
 
+/**
+ * Los doctores comparten los expedientes, asi que cada apertura queda
+ * registrada con su autor: es lo que permite distinguir una consulta legitima
+ * de la curiosidad sobre el expediente de un conocido.
+ */
 export function expediente(id: number): ExpedienteResumen {
   const resumen = repo.expedienteResumen(id)
   if (!resumen) throw new Error('El paciente no existe')
+
+  auditar({
+    accion: 'paciente.consultado',
+    entidad: 'paciente',
+    entidadId: id,
+    detalle: resumen.paciente.numeroExpediente
+  })
   return resumen
+}
+
+/** Version sin datos clinicos, para quien no tiene permiso de verlos. */
+export function ficha(id: number): FichaPaciente {
+  const resumen = repo.expedienteResumen(id)
+  if (!resumen) throw new Error('El paciente no existe')
+  return {
+    paciente: resumen.paciente,
+    contactos: resumen.contactos,
+    responsable: resumen.responsable
+  }
 }
 
 export function archivar(id: number): void {

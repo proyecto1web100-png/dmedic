@@ -78,12 +78,16 @@ export function TarjetaCita({
 
 export function PanelCita({
   cita,
+  puedeGestionar,
+  puedeAtender,
   onCerrar,
   onEditar,
   onCambio,
   onAtender
 }: {
   cita: CitaConPaciente
+  puedeGestionar: boolean
+  puedeAtender: boolean
   onCerrar: () => void
   onEditar: () => void
   onCambio: () => void | Promise<void>
@@ -120,13 +124,17 @@ export function PanelCita({
       onCerrar={onCerrar}
       pie={
         <>
-          <Boton variante="fantasma" onClick={onEditar} disabled={ocupado}>
-            Editar
-          </Boton>
-          <Boton variante="primario" onClick={() => onAtender(cita)} disabled={ocupado}>
-            <Stethoscope size={15} />
-            Iniciar consulta
-          </Boton>
+          {puedeGestionar && (
+            <Boton variante="fantasma" onClick={onEditar} disabled={ocupado}>
+              Editar
+            </Boton>
+          )}
+          {puedeAtender && (
+            <Boton variante="primario" onClick={() => onAtender(cita)} disabled={ocupado}>
+              <Stethoscope size={15} />
+              Iniciar consulta
+            </Boton>
+          )}
         </>
       }
     >
@@ -173,7 +181,7 @@ export function PanelCita({
           </p>
         )}
 
-        {cita.estado === 'agendada' && (
+        {cita.estado === 'agendada' && puedeGestionar && (
           <div className="flex flex-wrap gap-2 border-t border-[var(--borde)] pt-3.5">
             <Boton
               tamano="sm"
@@ -202,7 +210,7 @@ export function PanelCita({
           </div>
         )}
 
-        {cita.consultaAtencionId === null && (
+        {cita.consultaAtencionId === null && puedeGestionar && (
           <Boton
             tamano="sm"
             variante="fantasma"

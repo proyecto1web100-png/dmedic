@@ -4,6 +4,9 @@ import { ProveedorSesion, useSesion } from './Sesion'
 import { Layout } from './Layout'
 import { Cargando } from '../components/ui/Varios'
 import { PantallaAcceso } from '../features/auth/PantallaAcceso'
+import { CambioObligatorio } from '../features/auth/CambioObligatorio'
+import { Usuarios } from '../features/usuarios/Usuarios'
+import type { Permiso } from '@shared/types'
 import { Dashboard } from '../features/dashboard/Dashboard'
 import { ListaPacientes } from '../features/pacientes/ListaPacientes'
 import { Expediente } from '../features/expediente/Expediente'
@@ -23,21 +26,81 @@ function Enrutador(): React.JSX.Element {
   }
 
   if (!estado.autenticado) return <PantallaAcceso />
+  if (estado.sesion?.debeCambiarPassword) return <CambioObligatorio />
 
   return (
     <Routes>
       <Route element={<Layout />}>
         <Route index element={<Dashboard />} />
-        <Route path="pacientes" element={<ListaPacientes />} />
-        <Route path="pacientes/:id" element={<Expediente />} />
-        <Route path="pacientes/:pacienteId/consulta" element={<EditorConsulta />} />
-        <Route path="pacientes/:pacienteId/consulta/:consultaId" element={<EditorConsulta />} />
-        <Route path="agenda" element={<Agenda />} />
+        <Route
+          path="pacientes"
+          element={
+            <Protegida permiso="pacientes.ver">
+              <ListaPacientes />
+            </Protegida>
+          }
+        />
+        <Route
+          path="pacientes/:id"
+          element={
+            <Protegida permiso="pacientes.ver">
+              <Expediente />
+            </Protegida>
+          }
+        />
+        <Route
+          path="pacientes/:pacienteId/consulta"
+          element={
+            <Protegida permiso="consultas.crear">
+              <EditorConsulta />
+            </Protegida>
+          }
+        />
+        <Route
+          path="pacientes/:pacienteId/consulta/:consultaId"
+          element={
+            <Protegida permiso="consultas.editar">
+              <EditorConsulta />
+            </Protegida>
+          }
+        />
+        <Route
+          path="agenda"
+          element={
+            <Protegida permiso="citas.ver">
+              <Agenda />
+            </Protegida>
+          }
+        />
+        <Route
+          path="equipo"
+          element={
+            <Protegida permiso="usuarios.gestionar">
+              <Usuarios />
+            </Protegida>
+          }
+        />
         <Route path="configuracion" element={<Configuracion />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
   )
+}
+
+/**
+ * Evita que una dirección escrita a mano muestre una pantalla que el rol no
+ * debería ver. La comprobación de verdad ocurre en el proceso principal.
+ */
+function Protegida({
+  permiso,
+  children
+}: {
+  permiso: Permiso
+  children: React.ReactNode
+}): React.JSX.Element {
+  const { puede } = useSesion()
+  if (!puede(permiso)) return <Navigate to="/" replace />
+  return <>{children}</>
 }
 
 export function App(): React.JSX.Element {

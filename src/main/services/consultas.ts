@@ -5,6 +5,7 @@ import * as repo from '../repositories/consulta'
 import * as pacientesRepo from '../repositories/paciente'
 import * as citas from './citas'
 import { auditar } from '../audit/auditoria'
+import { exigirSesion } from '../security/sesion'
 import type {
   ConsultaCompleta,
   ConsultaInput,
@@ -26,12 +27,13 @@ function validar(entrada: ConsultaInput): ConsultaInput {
 }
 
 export function crear(entrada: ConsultaInput): number {
+  const sesion = exigirSesion()
   const datos = validar(entrada)
   if (!pacientesRepo.obtener(datos.pacienteId)) {
     throw new Error('El paciente no existe')
   }
 
-  const id = repo.crear(datos)
+  const id = repo.crear(datos, sesion.usuarioId)
 
   // La próxima cita indicada al final de la consulta queda agendada sin que haya
   // que registrarla otra vez a mano.
@@ -51,7 +53,29 @@ export function crear(entrada: ConsultaInput): number {
   return id
 }
 
+export class ErrorConsultaAjena extends Error {
+  readonly codigo = 'CONSULTA_AJENA'
+  constructor(readonly nombreDoctor: string | null) {
+    super(
+      nombreDoctor
+        ? `Esta consulta fue registrada por ${nombreDoctor}. Solo quien la atendió puede modificarla; usted puede agregarle una adenda.`
+        : 'Solo el doctor que atendió la consulta puede modificarla.'
+    )
+  }
+}
+
+/** Solo su autor corrige una consulta. Los demás dejan constancia con una adenda. */
+function exigirAutoria(id: number): void {
+  const sesion = exigirSesion()
+  const consulta = repo.obtenerCompleta(id)
+  if (!consulta) throw new Error('La consulta no existe')
+  if (consulta.usuarioId !== null && consulta.usuarioId !== sesion.usuarioId) {
+    throw new ErrorConsultaAjena(consulta.nombreDoctor)
+  }
+}
+
 export function actualizar(id: number, entrada: ConsultaInput): void {
+  exigirAutoria(id)
   const datos = validar(entrada)
   repo.actualizar(id, datos)
   citas.sincronizarDesdeConsulta(
@@ -65,7 +89,11 @@ export function actualizar(id: number, entrada: ConsultaInput): void {
 export function obtener(id: number): ConsultaCompleta {
   const consulta = repo.obtenerCompleta(id)
   if (!consulta) throw new Error('La consulta no existe')
-  return consulta
+
+  // "Editable" depende de quién pregunta: mismo día y además autoría propia.
+  const sesion = exigirSesion()
+  const esAutor = consulta.usuarioId === null || consulta.usuarioId === sesion.usuarioId
+  return { ...consulta, editable: consulta.editable && esAutor }
 }
 
 export function historial(pacienteId: number, filtro: FiltroHistorial = {}): ConsultaResumen[] {

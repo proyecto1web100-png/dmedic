@@ -8,12 +8,16 @@ import {
   type ReactNode
 } from 'react'
 import { api, pedir } from '../lib/api'
-import type { ConfiguracionClinica, EstadoAuth } from '@shared/types'
+import type { ConfiguracionClinica, EstadoAuth, Permiso } from '@shared/types'
 
 interface Contexto {
   estado: EstadoAuth | null
   config: ConfiguracionClinica | null
   cargando: boolean
+  /** Comprueba un permiso para decidir qué mostrar. El proceso principal lo verifica igual. */
+  puede: (permiso: Permiso) => boolean
+  esDoctor: boolean
+  esSecretaria: boolean
   refrescar: () => Promise<void>
   refrescarConfig: () => Promise<void>
   salir: () => Promise<void>
@@ -57,10 +61,20 @@ export function ProveedorSesion({ children }: { children: ReactNode }): React.JS
     await refrescar()
   }, [refrescar])
 
-  const valor = useMemo<Contexto>(
-    () => ({ estado, config, cargando, refrescar, refrescarConfig, salir }),
-    [estado, config, cargando, refrescar, refrescarConfig, salir]
-  )
+  const valor = useMemo<Contexto>(() => {
+    const permisos = new Set(estado?.permisos ?? [])
+    return {
+      estado,
+      config,
+      cargando,
+      puede: (permiso: Permiso) => permisos.has(permiso),
+      esDoctor: estado?.sesion?.rol === 'doctor',
+      esSecretaria: estado?.sesion?.rol === 'secretaria',
+      refrescar,
+      refrescarConfig,
+      salir
+    }
+  }, [estado, config, cargando, refrescar, refrescarConfig, salir])
 
   return <ContextoSesion.Provider value={valor}>{children}</ContextoSesion.Provider>
 }

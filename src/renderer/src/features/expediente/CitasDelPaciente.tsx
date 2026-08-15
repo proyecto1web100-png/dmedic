@@ -4,6 +4,7 @@ import { Boton } from '../../components/ui/Boton'
 import { Insignia } from '../../components/ui/Varios'
 import { api, mensajeDeError, pedir } from '../../lib/api'
 import { useNotificar } from '../../app/Notificaciones'
+import { useSesion } from '../../app/Sesion'
 import { formatearFecha, hoyIso } from '@shared/lib/fecha'
 import { FormularioCita } from '../agenda/FormularioCita'
 import type { CitaConPaciente, EstadoCita } from '@shared/types'
@@ -30,6 +31,7 @@ export function CitasDelPaciente({
   nombre: string
 }): React.JSX.Element {
   const notificar = useNotificar()
+  const { puede } = useSesion()
   const [citas, setCitas] = useState<CitaConPaciente[]>([])
   const [agendando, setAgendando] = useState(false)
 
@@ -55,14 +57,16 @@ export function CitasDelPaciente({
         <h3 className="text-[0.6875rem] font-bold uppercase tracking-wider text-[var(--tinta-tenue)]">
           Citas
         </h3>
-        <Boton
-          tamano="sm"
-          variante="fantasma"
-          iconoIzquierda={<CalendarPlus size={14} />}
-          onClick={() => setAgendando(true)}
-        >
-          Agendar
-        </Boton>
+        {puede('citas.gestionar') && (
+          <Boton
+            tamano="sm"
+            variante="fantasma"
+            iconoIzquierda={<CalendarPlus size={14} />}
+            onClick={() => setAgendando(true)}
+          >
+            Agendar
+          </Boton>
+        )}
       </div>
 
       {citas.length === 0 ? (

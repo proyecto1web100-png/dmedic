@@ -95,6 +95,16 @@ export interface ExpedienteResumen {
   responsable: { id: number; nombreCompleto: string; numeroIdentidad: string | null } | null
 }
 
+/**
+ * Vista sin información clínica. Es lo único que la secretaria puede ver de un
+ * paciente: nombre, contacto y expediente, para poder agendar y actualizar datos.
+ */
+export interface FichaPaciente {
+  paciente: PacienteConResumen
+  contactos: ContactoEmergencia[]
+  responsable: { id: number; nombreCompleto: string; numeroIdentidad: string | null } | null
+}
+
 export interface MedicacionActual {
   nombre: string
   concentracion: string | null

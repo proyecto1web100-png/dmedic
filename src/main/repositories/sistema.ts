@@ -1,5 +1,5 @@
 import { db } from '../db/conexion'
-import type { ConfiguracionClinica } from '@shared/types'
+import type { ConfiguracionClinica, Rol, Usuario } from '@shared/types'
 
 export interface FilaUsuario {
   id: number
@@ -10,8 +10,25 @@ export interface FilaUsuario {
   intentos_fallidos: number
   bloqueado_hasta: string | null
   creado_en: string
+  rol: Rol
+  es_administrador: number
+  activo: number
+  debe_cambiar_password: number
 }
 
+export function aUsuario(f: FilaUsuario): Usuario {
+  return {
+    id: f.id,
+    nombre: f.nombre,
+    rol: f.rol,
+    esAdministrador: f.es_administrador === 1,
+    activo: f.activo === 1,
+    debeCambiarPassword: f.debe_cambiar_password === 1,
+    creadoEn: f.creado_en
+  }
+}
+
+/** Primer usuario creado: es quien administra el sistema. */
 export function usuarioPrincipal(): FilaUsuario | null {
   const fila = db().prepare('SELECT * FROM usuario ORDER BY id LIMIT 1').get() as
     | FilaUsuario
@@ -19,19 +36,97 @@ export function usuarioPrincipal(): FilaUsuario | null {
   return fila ?? null
 }
 
+export function usuarioPorId(id: number): FilaUsuario | null {
+  const fila = db().prepare('SELECT * FROM usuario WHERE id = ?').get(id) as
+    | FilaUsuario
+    | undefined
+  return fila ?? null
+}
+
+export function usuarioPorNombre(nombre: string): FilaUsuario | null {
+  const fila = db()
+    .prepare('SELECT * FROM usuario WHERE lower(nombre) = lower(?)')
+    .get(nombre.trim()) as FilaUsuario | undefined
+  return fila ?? null
+}
+
+export function listarUsuarios(soloActivos = false): Usuario[] {
+  const filas = db()
+    .prepare(
+      `SELECT * FROM usuario ${soloActivos ? 'WHERE activo = 1' : ''} ORDER BY es_administrador DESC, rol, nombre`
+    )
+    .all() as FilaUsuario[]
+  return filas.map(aUsuario)
+}
+
+export function existeAlgunUsuario(): boolean {
+  const fila = db().prepare('SELECT COUNT(*) AS total FROM usuario').get() as { total: number }
+  return fila.total > 0
+}
+
 export function crearUsuario(datos: {
   nombre: string
   passwordHash: string
-  recuperacionHash: string
+  recuperacionHash: string | null
+  rol: Rol
+  esAdministrador: boolean
+  debeCambiarPassword: boolean
 }): number {
   const resultado = db()
     .prepare(
       `INSERT INTO usuario (nombre, password_hash, recuperacion_hash, recuperacion_usada,
-                            intentos_fallidos, creado_en)
-       VALUES (?, ?, ?, 0, 0, ?)`
+                            intentos_fallidos, creado_en, rol, es_administrador, activo,
+                            debe_cambiar_password)
+       VALUES (?, ?, ?, 0, 0, ?, ?, ?, 1, ?)`
     )
-    .run(datos.nombre, datos.passwordHash, datos.recuperacionHash, new Date().toISOString())
+    .run(
+      datos.nombre,
+      datos.passwordHash,
+      datos.recuperacionHash,
+      new Date().toISOString(),
+      datos.rol,
+      datos.esAdministrador ? 1 : 0,
+      datos.debeCambiarPassword ? 1 : 0
+    )
   return Number(resultado.lastInsertRowid)
+}
+
+export function actualizarUsuario(
+  id: number,
+  datos: { nombre: string; rol: Rol; esAdministrador: boolean }
+): void {
+  db()
+    .prepare('UPDATE usuario SET nombre = ?, rol = ?, es_administrador = ? WHERE id = ?')
+    .run(datos.nombre, datos.rol, datos.esAdministrador ? 1 : 0, id)
+}
+
+export function alternarUsuario(id: number, activo: boolean): void {
+  db()
+    .prepare('UPDATE usuario SET activo = ?, intentos_fallidos = 0, bloqueado_hasta = NULL WHERE id = ?')
+    .run(activo ? 1 : 0, id)
+}
+
+export function establecerPassword(
+  id: number,
+  passwordHash: string,
+  debeCambiar: boolean
+): void {
+  db()
+    .prepare(
+      `UPDATE usuario SET password_hash = ?, debe_cambiar_password = ?,
+              intentos_fallidos = 0, bloqueado_hasta = NULL
+       WHERE id = ?`
+    )
+    .run(passwordHash, debeCambiar ? 1 : 0, id)
+}
+
+export function contarAdministradoresActivos(excluirId?: number): number {
+  const fila = db()
+    .prepare(
+      'SELECT COUNT(*) AS total FROM usuario WHERE es_administrador = 1 AND activo = 1 AND id != ?'
+    )
+    .get(excluirId ?? -1) as { total: number }
+  return fila.total
 }
 
 export function actualizarPassword(id: number, passwordHash: string): void {

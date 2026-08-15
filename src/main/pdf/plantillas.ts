@@ -117,7 +117,15 @@ const ESTILOS_BASE = `
   .bloque p { margin: 3px 0; font-size: 10px; line-height: 1.55; }
 `
 
-function encabezado(config: ConfiguracionClinica): string {
+/**
+ * Con varios doctores en la clinica, quien firma es el que atendio la consulta,
+ * no el nombre configurado a nivel de clinica.
+ */
+function doctorFirmante(config: ConfiguracionClinica, consulta: ConsultaCompleta): string {
+  return consulta.nombreDoctor ?? config.nombreDoctor
+}
+
+function encabezado(config: ConfiguracionClinica, nombreDoctor: string): string {
   const logo = config.logoDataUrl
     ? `<img src="${esc(config.logoDataUrl)}" alt="">`
     : ''
@@ -131,7 +139,7 @@ function encabezado(config: ConfiguracionClinica): string {
         <div class="clinica-datos">${datosClinica}</div>
       </div>
       <div class="doctor">
-        <strong>${esc(config.nombreDoctor)}</strong>
+        <strong>${esc(nombreDoctor)}</strong>
         ${esc(config.especialidad)}
       </div>
     </div>`
@@ -179,11 +187,11 @@ function itemMedicamento(m: MedicamentoRecetado, indice: number): string {
     </div>`
 }
 
-function firma(config: ConfiguracionClinica): string {
+function firma(config: ConfiguracionClinica, nombreDoctor: string): string {
   return `
     <div class="firma">
       <div class="linea"></div>
-      <div class="rotulo">${esc(config.nombreDoctor)}${config.especialidad ? ` · ${esc(config.especialidad)}` : ''}</div>
+      <div class="rotulo">${esc(nombreDoctor)}${config.especialidad ? ` · ${esc(config.especialidad)}` : ''}</div>
     </div>`
 }
 
@@ -200,14 +208,15 @@ export function htmlReceta(
   consulta: ConsultaCompleta
 ): string {
   const medicamentos = consulta.medicamentos.map(itemMedicamento).join('')
+  const doctor = doctorFirmante(config, consulta)
   const cuerpo = `
-    ${encabezado(config)}
+    ${encabezado(config, doctor)}
     ${bloquePaciente(expediente, consulta.fecha)}
     ${avisoAlergias(expediente)}
     <div class="titulo-seccion">Receta médica</div>
     ${medicamentos || '<p style="font-size:10px;color:#6b7c8c">Sin medicamentos prescritos.</p>'}
     ${consulta.recomendaciones ? `<div class="titulo-seccion">Recomendaciones</div><div class="bloque"><p>${textoMultilinea(consulta.recomendaciones)}</p></div>` : ''}
-    ${firma(config)}
+    ${firma(config, doctor)}
     <div class="pie">${esc(config.nombreClinica)} · Documento generado el ${esc(formatearFechaLarga(new Date().toISOString()))}</div>`
   return documento('Receta médica', cuerpo)
 }
@@ -251,8 +260,9 @@ export function htmlResumenConsulta(
       ? `<div class="titulo-seccion">${esc(titulo)}</div><div class="bloque">${contenido}</div>`
       : ''
 
+  const doctor = doctorFirmante(config, consulta)
   const cuerpo = `
-    ${encabezado(config)}
+    ${encabezado(config, doctor)}
     ${bloquePaciente(expediente, consulta.fecha)}
     ${avisoAlergias(expediente)}
     ${seccion('Motivo de consulta', `<p>${textoMultilinea(consulta.motivo)}</p>`)}
@@ -266,7 +276,7 @@ export function htmlResumenConsulta(
     ${seccion('Recomendaciones', consulta.recomendaciones ? `<p>${textoMultilinea(consulta.recomendaciones)}</p>` : '')}
     ${seccion('Próxima cita', consulta.sinProximaCita ? '<p>Sin próxima cita programada.</p>' : `<p>${esc(formatearFechaLarga(consulta.proximaCitaFecha))}</p>`)}
     ${consulta.adendas.length > 0 ? `<div class="titulo-seccion">Adendas</div>${consulta.adendas.map((a) => `<div class="bloque"><p><strong>${esc(formatearFechaLarga(a.creadaEn))}</strong><br>${textoMultilinea(a.texto)}</p></div>`).join('')}` : ''}
-    ${firma(config)}
+    ${firma(config, doctor)}
     <div class="pie">${esc(config.nombreClinica)} · Documento generado el ${esc(formatearFechaLarga(new Date().toISOString()))}</div>`
 
   return documento('Resumen de consulta', cuerpo)

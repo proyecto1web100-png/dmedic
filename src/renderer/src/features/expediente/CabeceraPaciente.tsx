@@ -11,9 +11,11 @@ import type { ExpedienteResumen } from '@shared/types'
  */
 export function CabeceraPaciente({
   expediente,
+  mostrarClinico = true,
   onEditar
 }: {
   expediente: ExpedienteResumen
+  mostrarClinico?: boolean
   onEditar: () => void
 }): React.JSX.Element {
   const { paciente, alergias, cronicos, medicacionActual, contactos, responsable } = expediente
@@ -53,7 +55,7 @@ export function CabeceraPaciente({
         </Boton>
       </div>
 
-      <div className="grid grid-cols-3 divide-x divide-[var(--borde)]">
+      <div className={`grid grid-cols-3 divide-x divide-[var(--borde)] ${mostrarClinico ? '' : 'hidden'}`}>
         <Bloque
           icono={<AlertTriangle size={14} />}
           titulo="Alergias"

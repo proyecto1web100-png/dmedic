@@ -1,11 +1,12 @@
 import { useState, type FormEvent } from 'react'
-import { KeyRound, Lock, ShieldCheck, Stethoscope } from 'lucide-react'
+import { KeyRound, Lock, Stethoscope, UserRound } from 'lucide-react'
 import { Boton } from '../../components/ui/Boton'
 import { Entrada } from '../../components/ui/Campo'
 import { Aviso } from '../../components/ui/Varios'
 import { api, mensajeDeError, pedir } from '../../lib/api'
 import { useSesion } from '../../app/Sesion'
 import { CodigoRecuperacion } from './CodigoRecuperacion'
+import type { UsuarioParaAcceso } from '@shared/types'
 
 type Modo = 'entrar' | 'recuperar'
 
@@ -35,7 +36,11 @@ export function PantallaAcceso(): React.JSX.Element {
       {!instalado ? (
         <FormularioInstalacion onInstalado={setCodigoEmitido} />
       ) : modo === 'entrar' ? (
-        <FormularioEntrar onRecuperar={() => setModo('recuperar')} onEntrado={refrescar} />
+        <FormularioEntrar
+          usuarios={estado?.usuarios ?? []}
+          onRecuperar={() => setModo('recuperar')}
+          onEntrado={refrescar}
+        />
       ) : (
         <FormularioRecuperar onCancelar={() => setModo('entrar')} onRecuperado={setCodigoEmitido} />
       )}
@@ -169,22 +174,29 @@ function FormularioInstalacion({
 }
 
 function FormularioEntrar({
+  usuarios,
   onRecuperar,
   onEntrado
 }: {
+  usuarios: UsuarioParaAcceso[]
   onRecuperar: () => void
   onEntrado: () => Promise<void>
 }): React.JSX.Element {
+  // Con un solo usuario no tiene sentido hacerle elegir.
+  const [elegido, setElegido] = useState<UsuarioParaAcceso | null>(
+    usuarios.length === 1 ? usuarios[0] : null
+  )
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [enviando, setEnviando] = useState(false)
 
   async function enviar(evento: FormEvent): Promise<void> {
     evento.preventDefault()
+    if (!elegido) return
     setError(null)
     setEnviando(true)
     try {
-      await pedir(api.auth.entrar(password))
+      await pedir(api.auth.entrar(elegido.id, password))
       setPassword('')
       await onEntrado()
     } catch (fallo) {
@@ -194,8 +206,61 @@ function FormularioEntrar({
     }
   }
 
+  if (!elegido) {
+    return (
+      <div className="flex flex-col gap-2">
+        <p className="mb-1 text-[0.875rem] text-[var(--tinta-suave)]">¿Quién va a entrar?</p>
+        {usuarios.map((usuario) => (
+          <button
+            key={usuario.id}
+            onClick={() => setElegido(usuario)}
+            className="flex items-center gap-3 rounded-lg border border-[var(--borde)] px-3.5 py-3 text-left transition-colors hover:border-marca-400 hover:bg-marca-50 oscuro:hover:bg-marca-900/40"
+          >
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-marca-100 text-marca-700 oscuro:bg-marca-900 oscuro:text-marca-300">
+              {usuario.rol === 'doctor' ? <Stethoscope size={17} /> : <UserRound size={17} />}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate font-medium text-[var(--tinta)]">
+                {usuario.nombre}
+              </span>
+              <span className="block text-[0.8125rem] text-[var(--tinta-tenue)]">
+                {usuario.rol === 'doctor' ? 'Doctor' : 'Secretaria'}
+                {usuario.bloqueadoHasta ? ' · bloqueado temporalmente' : ''}
+              </span>
+            </span>
+          </button>
+        ))}
+      </div>
+    )
+  }
+
   return (
     <form onSubmit={enviar} className="flex flex-col gap-3.5">
+      <div className="flex items-center gap-2.5">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-marca-100 text-marca-700 oscuro:bg-marca-900 oscuro:text-marca-300">
+          {elegido.rol === 'doctor' ? <Stethoscope size={17} /> : <UserRound size={17} />}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-medium text-[var(--tinta)]">{elegido.nombre}</p>
+          <p className="text-[0.8125rem] text-[var(--tinta-tenue)]">
+            {elegido.rol === 'doctor' ? 'Doctor' : 'Secretaria'}
+          </p>
+        </div>
+        {usuarios.length > 1 && (
+          <Boton
+            tamano="sm"
+            variante="fantasma"
+            onClick={() => {
+              setElegido(null)
+              setPassword('')
+              setError(null)
+            }}
+          >
+            Cambiar
+          </Boton>
+        )}
+      </div>
+
       <Entrada
         etiqueta="Contraseña"
         type="password"
@@ -315,6 +380,3 @@ function FormularioRecuperar({
   )
 }
 
-export function IconoSeguridad(): React.JSX.Element {
-  return <ShieldCheck size={16} />
-}

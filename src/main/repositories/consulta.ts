@@ -16,6 +16,7 @@ import type {
 interface FilaConsulta {
   id: number
   paciente_id: number
+  usuario_id: number | null
   fecha: string
   motivo: string
   sintomas: string | null
@@ -35,6 +36,7 @@ function aConsulta(f: FilaConsulta): Consulta {
   return {
     id: f.id,
     pacienteId: f.paciente_id,
+    usuarioId: f.usuario_id,
     fecha: f.fecha,
     motivo: f.motivo,
     sintomas: f.sintomas,
@@ -141,7 +143,7 @@ function guardarReceta(consultaId: number, medicamentos: MedicamentoRecetado[], 
   })
 }
 
-export function crear(input: ConsultaInput): number {
+export function crear(input: ConsultaInput, usuarioId: number): number {
   return enTransaccion(() => {
     const ahora = ahoraIso()
     const fecha = hoyIso()
@@ -151,14 +153,15 @@ export function crear(input: ConsultaInput): number {
         `INSERT INTO consulta (
            paciente_id, fecha, motivo, sintomas, exploracion, tratamiento,
            observaciones, recomendaciones, proxima_cita_fecha, sin_proxima_cita,
-           estado, creada_en, actualizada_en
+           estado, creada_en, actualizada_en, usuario_id
          ) VALUES (
            @pacienteId, @fecha, @motivo, @sintomas, @exploracion, @tratamiento,
            @observaciones, @recomendaciones, @proximaCitaFecha, @sinProximaCita,
-           'activa', @ahora, @ahora
+           'activa', @ahora, @ahora, @usuarioId
          )`
       )
       .run({
+        usuarioId,
         pacienteId: input.pacienteId,
         fecha,
         motivo: input.motivo,
@@ -360,6 +363,14 @@ export function agregarAdenda(consultaId: number, texto: string): number {
   return Number(resultado.lastInsertRowid)
 }
 
+function nombreDelDoctor(usuarioId: number | null): string | null {
+  if (usuarioId === null) return null
+  const fila = db().prepare('SELECT nombre FROM usuario WHERE id = ?').get(usuarioId) as
+    | { nombre: string }
+    | undefined
+  return fila?.nombre ?? null
+}
+
 export function obtenerCompleta(id: number): ConsultaCompleta | null {
   const consulta = obtener(id)
   if (!consulta) return null
@@ -369,7 +380,8 @@ export function obtenerCompleta(id: number): ConsultaCompleta | null {
     diagnosticos: diagnosticos(id),
     medicamentos: medicamentos(id),
     adendas: adendas(id),
-    editable: esEditable(consulta)
+    editable: esEditable(consulta),
+    nombreDoctor: nombreDelDoctor(consulta.usuarioId)
   }
 }
 

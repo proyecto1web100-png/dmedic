@@ -1,13 +1,20 @@
+import type { Permiso, Rol, UsuarioParaAcceso } from './usuario'
+
 export interface Sesion {
   usuarioId: number
   nombre: string
+  rol: Rol
+  esAdministrador: boolean
+  debeCambiarPassword: boolean
 }
 
 export interface EstadoAuth {
   instalado: boolean
   autenticado: boolean
   sesion: Sesion | null
-  bloqueadoHasta: string | null
+  permisos: Permiso[]
+  /** Usuarios activos, para que la pantalla de acceso muestre a quién entrar. */
+  usuarios: UsuarioParaAcceso[]
 }
 
 export interface ConfiguracionClinica {

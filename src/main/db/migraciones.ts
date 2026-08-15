@@ -280,9 +280,41 @@ CREATE UNIQUE INDEX idx_cita_origen ON cita(consulta_origen_id)
   WHERE consulta_origen_id IS NOT NULL;
 `
 
+/**
+ * De un solo doctor a un equipo con roles. Todo lo existente se atribuye al
+ * unico usuario que habia, que pasa a ser administrador: ningun expediente ni
+ * consulta queda sin autor.
+ */
+const USUARIOS_Y_ROLES = `
+ALTER TABLE usuario ADD COLUMN rol TEXT NOT NULL DEFAULT 'doctor';
+ALTER TABLE usuario ADD COLUMN es_administrador INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE usuario ADD COLUMN activo INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE usuario ADD COLUMN debe_cambiar_password INTEGER NOT NULL DEFAULT 0;
+
+UPDATE usuario
+   SET rol = 'doctor', es_administrador = 1
+ WHERE id = (SELECT MIN(id) FROM usuario);
+
+ALTER TABLE consulta ADD COLUMN usuario_id INTEGER REFERENCES usuario(id);
+UPDATE consulta
+   SET usuario_id = (SELECT MIN(id) FROM usuario)
+ WHERE usuario_id IS NULL;
+CREATE INDEX idx_consulta_usuario ON consulta(usuario_id);
+
+ALTER TABLE cita ADD COLUMN creada_por INTEGER REFERENCES usuario(id);
+UPDATE cita
+   SET creada_por = (SELECT MIN(id) FROM usuario)
+ WHERE creada_por IS NULL;
+
+-- Con varios usuarios, una accion sin autor no sirve de nada.
+ALTER TABLE auditoria ADD COLUMN usuario_id INTEGER;
+ALTER TABLE auditoria ADD COLUMN usuario_nombre TEXT;
+`
+
 const MIGRACIONES: Migracion[] = [
   { version: 1, nombre: 'esquema_inicial', sql: ESQUEMA_INICIAL },
-  { version: 2, nombre: 'agenda_de_citas', sql: AGENDA }
+  { version: 2, nombre: 'agenda_de_citas', sql: AGENDA },
+  { version: 3, nombre: 'usuarios_y_roles', sql: USUARIOS_Y_ROLES }
 ]
 
 /** Version de esquema que este programa sabe manejar. */
@@ -305,8 +337,27 @@ export function versionDeLaBase(db: Database): number {
   return fila.version ?? 0
 }
 
+function versionesAplicadas(db: Database): Set<number> {
+  asegurarTablaMigracion(db)
+  return new Set(
+    db
+      .prepare('SELECT version FROM migracion')
+      .all()
+      .map((f) => (f as { version: number }).version)
+  )
+}
+
+/**
+ * Se compara contra el conjunto de migraciones aplicadas, no contra el numero
+ * mas alto: si faltara una intermedia, seguir el maximo la daria por aplicada.
+ */
+export function migracionesPendientes(db: Database): number[] {
+  const aplicadas = versionesAplicadas(db)
+  return MIGRACIONES.filter((m) => !aplicadas.has(m.version)).map((m) => m.version)
+}
+
 export function hayMigracionesPendientes(db: Database): boolean {
-  return versionDeLaBase(db) < VERSION_ESQUEMA
+  return migracionesPendientes(db).length > 0
 }
 
 /**
@@ -332,12 +383,7 @@ export function aplicarMigraciones(db: Database): void {
   const actual = versionDeLaBase(db)
   if (actual > VERSION_ESQUEMA) throw new ErrorBaseMasNueva(actual, VERSION_ESQUEMA)
 
-  const aplicadas = new Set(
-    db
-      .prepare('SELECT version FROM migracion')
-      .all()
-      .map((f) => (f as { version: number }).version)
-  )
+  const aplicadas = versionesAplicadas(db)
 
   const registrar = db.prepare(
     'INSERT INTO migracion (version, nombre, aplicada_en) VALUES (?, ?, ?)'

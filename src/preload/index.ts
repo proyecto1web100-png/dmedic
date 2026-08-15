@@ -15,6 +15,7 @@ import type {
   EstadoAuth,
   EstadoCita,
   ExpedienteResumen,
+  FichaPaciente,
   FiltroHistorial,
   Medicamento,
   MedicamentoInput,
@@ -24,7 +25,9 @@ import type {
   Resultado,
   ResumenAgenda,
   ResumenDashboard,
-  SolapamientoCita
+  SolapamientoCita,
+  Usuario,
+  UsuarioInput
 } from '@shared/types'
 
 function invocar<T>(canal: string, ...argumentos: unknown[]): Promise<Resultado<T>> {
@@ -41,17 +44,29 @@ const api = {
     estado: () => invocar<EstadoAuth>('auth:estado'),
     instalar: (datos: { nombreDoctor: string; nombreClinica: string; password: string }) =>
       invocar<{ codigoRecuperacion: string }>('auth:instalar', datos),
-    entrar: (password: string) => invocar<void>('auth:entrar', password),
+    entrar: (usuarioId: number, password: string) =>
+      invocar<void>('auth:entrar', usuarioId, password),
     recuperar: (codigo: string, nuevaPassword: string) =>
       invocar<{ codigoRecuperacion: string }>('auth:recuperar', codigo, nuevaPassword),
     salir: () => invocar<void>('auth:salir'),
     cambiarPassword: (actual: string, nueva: string) =>
       invocar<void>('auth:cambiarPassword', actual, nueva)
   },
+  usuarios: {
+    listar: () => invocar<Usuario[]>('usuarios:listar'),
+    crear: (datos: UsuarioInput & { password: string }) =>
+      invocar<number>('usuarios:crear', datos),
+    actualizar: (id: number, datos: UsuarioInput) =>
+      invocar<void>('usuarios:actualizar', id, datos),
+    alternar: (id: number, activo: boolean) => invocar<void>('usuarios:alternar', id, activo),
+    reiniciarPassword: (id: number, password: string) =>
+      invocar<void>('usuarios:reiniciarPassword', id, password)
+  },
   pacientes: {
     buscar: (texto: string, opciones?: { incluirInactivos?: boolean }) =>
       invocar<PacienteConResumen[]>('pacientes:buscar', texto, opciones),
     expediente: (id: number) => invocar<ExpedienteResumen>('pacientes:expediente', id),
+    ficha: (id: number) => invocar<FichaPaciente>('pacientes:ficha', id),
     crear: (entrada: PacienteInput) => invocar<number>('pacientes:crear', entrada),
     actualizar: (id: number, entrada: PacienteInput) =>
       invocar<void>('pacientes:actualizar', id, entrada),
@@ -163,6 +178,8 @@ const api = {
   config: {
     obtener: () => invocar<ConfiguracionClinica>('config:obtener'),
     guardar: (config: ConfiguracionClinica) => invocar<void>('config:guardar', config),
+    apariencia: (tema: 'claro' | 'oscuro', tamano: 'normal' | 'grande') =>
+      invocar<void>('config:apariencia', tema, tamano),
     version: () => invocar<string>('config:version')
   },
   actualizaciones: {

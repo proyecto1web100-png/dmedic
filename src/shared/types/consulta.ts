@@ -37,6 +37,8 @@ export interface MedicamentoRecetado {
 export interface Consulta {
   id: number
   pacienteId: number
+  /** Doctor que atendió la consulta. Nulo solo en datos anteriores al equipo. */
+  usuarioId: number | null
   fecha: string
   motivo: string
   sintomas: string | null
@@ -58,6 +60,8 @@ export interface ConsultaCompleta extends Consulta {
   medicamentos: MedicamentoRecetado[]
   adendas: Adenda[]
   editable: boolean
+  /** Nombre del doctor que la atendió, para mostrarla y firmar sus documentos. */
+  nombreDoctor: string | null
 }
 
 export interface Adenda {

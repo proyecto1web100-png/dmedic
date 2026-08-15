@@ -1,10 +1,12 @@
 import { ipcMain } from 'electron'
-import { exigirSesion } from '../security/sesion'
-import type { Resultado } from '@shared/types'
+import { exigirPermiso, exigirSesion } from '../security/sesion'
+import type { Permiso, Resultado } from '@shared/types'
 
 interface OpcionesCanal {
   /** Los canales de autenticacion e instalacion son los unicos que no exigen sesion. */
   publico?: boolean
+  /** Permiso obligatorio. Se comprueba aqui, no en la interfaz. */
+  permiso?: Permiso
 }
 
 function mensajeDeError(error: unknown): { error: string; codigo?: string } {
@@ -27,7 +29,10 @@ export function canal<A extends unknown[], T>(
 ): void {
   ipcMain.handle(nombre, async (_evento, ...argumentos): Promise<Resultado<T>> => {
     try {
-      if (!opciones.publico) exigirSesion()
+      if (!opciones.publico) {
+        if (opciones.permiso) exigirPermiso(opciones.permiso)
+        else exigirSesion()
+      }
       const datos = await manejador(...(argumentos as A))
       return { ok: true, datos }
     } catch (error) {

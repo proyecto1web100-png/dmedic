@@ -16,6 +16,7 @@ import { Modal } from '../../components/ui/Modal'
 import { Aviso, Cargando, Insignia, Vacio } from '../../components/ui/Varios'
 import { api, mensajeDeError, pedir } from '../../lib/api'
 import { useNotificar } from '../../app/Notificaciones'
+import { useSesion } from '../../app/Sesion'
 import { formatearFecha } from '@shared/lib/fecha'
 import { CabeceraPaciente } from './CabeceraPaciente'
 import { VistaConsulta } from './VistaConsulta'
@@ -47,8 +48,27 @@ export function Expediente(): React.JSX.Element {
   const [eliminando, setEliminando] = useState(false)
   const [cargando, setCargando] = useState(true)
 
+  const { puede } = useSesion()
+  const verClinico = puede('pacientes.ver_clinico')
+
   const cargar = useCallback(async () => {
     try {
+      // Sin permiso clínico se carga la ficha: nombre, contacto y expediente,
+      // sin alergias, diagnósticos ni consultas.
+      if (!verClinico) {
+        const ficha = await pedir(api.pacientes.ficha(pacienteId))
+        setExpediente({
+          ...ficha,
+          alergias: [],
+          antecedentes: [],
+          cronicos: [],
+          medicacionActual: []
+        })
+        setHistorial([])
+        setSeleccionada(null)
+        return
+      }
+
       const [datos, lista] = await Promise.all([
         pedir(api.pacientes.expediente(pacienteId)),
         pedir(api.consultas.historial(pacienteId, { texto: filtroTexto || null }))
@@ -65,7 +85,7 @@ export function Expediente(): React.JSX.Element {
     } finally {
       setCargando(false)
     }
-  }, [pacienteId, filtroTexto, notificar])
+  }, [pacienteId, filtroTexto, notificar, verClinico])
 
   useEffect(() => {
     void cargar()
@@ -127,40 +147,57 @@ export function Expediente(): React.JSX.Element {
           Pacientes
         </Boton>
         <div className="flex items-center gap-2">
-          <Boton
-            tamano="sm"
-            variante="fantasma"
-            iconoIzquierda={<Archive size={14} />}
-            onClick={() => void archivar()}
-          >
-            {expediente.paciente.activo ? 'Archivar' : 'Reactivar'}
-          </Boton>
-          <Boton
-            tamano="sm"
-            variante="fantasma"
-            iconoIzquierda={<Trash2 size={14} />}
-            onClick={() => setEliminando(true)}
-            className="text-red-600 hover:bg-red-50 hover:text-red-700 oscuro:text-red-400 oscuro:hover:bg-red-950/40"
-          >
-            Eliminar
-          </Boton>
-          <Boton
-            variante="primario"
-            iconoIzquierda={<Plus size={16} />}
-            onClick={() => navegar(`/pacientes/${pacienteId}/consulta`)}
-          >
-            Nueva consulta
-          </Boton>
+          {puede('pacientes.archivar') && (
+            <Boton
+              tamano="sm"
+              variante="fantasma"
+              iconoIzquierda={<Archive size={14} />}
+              onClick={() => void archivar()}
+            >
+              {expediente.paciente.activo ? 'Archivar' : 'Reactivar'}
+            </Boton>
+          )}
+          {puede('pacientes.eliminar') && (
+            <Boton
+              tamano="sm"
+              variante="fantasma"
+              iconoIzquierda={<Trash2 size={14} />}
+              onClick={() => setEliminando(true)}
+              className="text-red-600 hover:bg-red-50 hover:text-red-700 oscuro:text-red-400 oscuro:hover:bg-red-950/40"
+            >
+              Eliminar
+            </Boton>
+          )}
+          {puede('consultas.crear') && (
+            <Boton
+              variante="primario"
+              iconoIzquierda={<Plus size={16} />}
+              onClick={() => navegar(`/pacientes/${pacienteId}/consulta`)}
+            >
+              Nueva consulta
+            </Boton>
+          )}
         </div>
       </div>
 
-      <CabeceraPaciente expediente={expediente} onEditar={() => setEditando(true)} />
+      <CabeceraPaciente
+        expediente={expediente}
+        mostrarClinico={verClinico}
+        onEditar={() => setEditando(true)}
+      />
 
-      <PanelDatosClinicos expediente={expediente} onCambio={cargar} />
+      {verClinico && <PanelDatosClinicos expediente={expediente} onCambio={cargar} />}
 
       <CitasDelPaciente pacienteId={pacienteId} nombre={expediente.paciente.nombreCompleto} />
 
-      <section className="flex min-h-0 flex-1 flex-col">
+      {!verClinico && (
+        <Aviso tono="info">
+          Su usuario gestiona la agenda y los datos de contacto. La información clínica —
+          consultas, diagnósticos, alergias y recetas — solo es accesible para los doctores.
+        </Aviso>
+      )}
+
+      <section className={`flex min-h-0 flex-1 flex-col ${verClinico ? '' : 'hidden'}`}>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-[0.75rem] font-bold uppercase tracking-wider text-[var(--tinta-tenue)]">
             Historial · {historial.length}{' '}

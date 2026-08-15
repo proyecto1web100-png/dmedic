@@ -5,6 +5,7 @@ import {
   LogOut,
   Moon,
   Settings,
+  ShieldCheck,
   Stethoscope,
   Sun,
   Users
@@ -13,23 +14,43 @@ import { useSesion } from './Sesion'
 import { api, pedir } from '../lib/api'
 import { useNotificar } from './Notificaciones'
 
-const ENLACES = [
+import type { Permiso } from '@shared/types'
+
+const ENLACES: {
+  a: string
+  etiqueta: string
+  icono: typeof LayoutDashboard
+  exacto: boolean
+  permiso?: Permiso
+}[] = [
   { a: '/', etiqueta: 'Inicio', icono: LayoutDashboard, exacto: true },
-  { a: '/pacientes', etiqueta: 'Pacientes', icono: Users, exacto: false },
-  { a: '/agenda', etiqueta: 'Agenda', icono: CalendarDays, exacto: false },
+  { a: '/pacientes', etiqueta: 'Pacientes', icono: Users, exacto: false, permiso: 'pacientes.ver' },
+  { a: '/agenda', etiqueta: 'Agenda', icono: CalendarDays, exacto: false, permiso: 'citas.ver' },
+  {
+    a: '/equipo',
+    etiqueta: 'Equipo',
+    icono: ShieldCheck,
+    exacto: false,
+    permiso: 'usuarios.gestionar'
+  },
   { a: '/configuracion', etiqueta: 'Configuración', icono: Settings, exacto: false }
 ]
 
 export function Layout(): React.JSX.Element {
-  const { config, salir, refrescarConfig } = useSesion()
+  const { config, estado, puede, salir, refrescarConfig } = useSesion()
   const notificar = useNotificar()
   const navegar = useNavigate()
+
+  const visibles = ENLACES.filter((e) => !e.permiso || puede(e.permiso))
 
   async function alternarTema(): Promise<void> {
     if (!config) return
     try {
       await pedir(
-        api.config.guardar({ ...config, tema: config.tema === 'oscuro' ? 'claro' : 'oscuro' })
+        api.config.apariencia(
+          config.tema === 'oscuro' ? 'claro' : 'oscuro',
+          config.tamanoFuente
+        )
       )
       await refrescarConfig()
     } catch {
@@ -62,13 +83,14 @@ export function Layout(): React.JSX.Element {
               {config?.nombreClinica || 'DMedic'}
             </p>
             <p className="truncate text-[0.75rem] text-[var(--tinta-tenue)]">
-              {config?.nombreDoctor}
+              {estado?.sesion?.nombre}
+              {estado?.sesion?.rol === 'secretaria' ? ' · Secretaria' : ''}
             </p>
           </div>
         </div>
 
         <nav className="flex flex-1 flex-col gap-0.5 px-2.5 py-2">
-          {ENLACES.map(({ a, etiqueta, icono: Icono, exacto }) => (
+          {visibles.map(({ a, etiqueta, icono: Icono, exacto }) => (
             <NavLink
               key={a}
               to={a}
