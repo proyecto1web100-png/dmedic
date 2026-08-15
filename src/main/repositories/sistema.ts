@@ -173,6 +173,7 @@ interface FilaConfiguracion {
   especialidad: string | null
   tema: 'claro' | 'oscuro'
   tamano_fuente: 'normal' | 'grande'
+  tamano_receta: 'carta' | 'media_carta'
 }
 
 const CONFIGURACION_POR_DEFECTO: ConfiguracionClinica = {
@@ -183,7 +184,8 @@ const CONFIGURACION_POR_DEFECTO: ConfiguracionClinica = {
   nombreDoctor: '',
   especialidad: 'Medicina General',
   tema: 'claro',
-  tamanoFuente: 'normal'
+  tamanoFuente: 'normal',
+  tamanoReceta: 'carta'
 }
 
 export function configuracion(): ConfiguracionClinica {
@@ -199,7 +201,8 @@ export function configuracion(): ConfiguracionClinica {
     nombreDoctor: fila.nombre_doctor,
     especialidad: fila.especialidad,
     tema: fila.tema,
-    tamanoFuente: fila.tamano_fuente
+    tamanoFuente: fila.tamano_fuente,
+    tamanoReceta: fila.tamano_receta ?? 'carta'
   }
 }
 
@@ -208,9 +211,9 @@ export function guardarConfiguracion(config: ConfiguracionClinica): void {
     .prepare(
       `INSERT INTO configuracion_clinica (
          id, nombre_clinica, direccion, telefono, logo_data_url,
-         nombre_doctor, especialidad, tema, tamano_fuente
+         nombre_doctor, especialidad, tema, tamano_fuente, tamano_receta
        ) VALUES (1, @nombreClinica, @direccion, @telefono, @logoDataUrl,
-                 @nombreDoctor, @especialidad, @tema, @tamanoFuente)
+                 @nombreDoctor, @especialidad, @tema, @tamanoFuente, @tamanoReceta)
        ON CONFLICT(id) DO UPDATE SET
          nombre_clinica = excluded.nombre_clinica,
          direccion = excluded.direccion,
@@ -219,7 +222,8 @@ export function guardarConfiguracion(config: ConfiguracionClinica): void {
          nombre_doctor = excluded.nombre_doctor,
          especialidad = excluded.especialidad,
          tema = excluded.tema,
-         tamano_fuente = excluded.tamano_fuente`
+         tamano_fuente = excluded.tamano_fuente,
+         tamano_receta = excluded.tamano_receta`
     )
     .run(config)
 }

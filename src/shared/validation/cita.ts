@@ -10,6 +10,12 @@ const textoOpcional = (max: number) =>
 
 export const citaInputSchema = z
   .object({
+    doctorId: z
+      .number()
+      .int()
+      .positive()
+      .nullish()
+      .transform((v) => v ?? null),
     pacienteId: z
       .number()
       .int()

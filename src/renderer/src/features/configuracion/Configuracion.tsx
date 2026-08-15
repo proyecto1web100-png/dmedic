@@ -172,6 +172,23 @@ export function Configuracion(): React.JSX.Element {
         </div>
       </section>
 
+      <section className="superficie px-5 py-4">
+        <h2 className="mb-3 text-[0.6875rem] font-bold uppercase tracking-wider text-[var(--tinta-tenue)]">
+          Documentos impresos
+        </h2>
+        <Selector
+          etiqueta="Papel de la receta"
+          className="max-w-xs"
+          value={datos.tamanoReceta}
+          onChange={(e) => cambiar('tamanoReceta', e.target.value as 'carta' | 'media_carta')}
+          opciones={[
+            { valor: 'carta', etiqueta: 'Carta (8.5 × 11")' },
+            { valor: 'media_carta', etiqueta: 'Media carta (5.5 × 8.5")' }
+          ]}
+          ayuda="El expediente, el resumen de consulta y los reportes de agenda siempre son carta."
+        />
+      </section>
+
       <CambioPassword />
       <PanelBackups />
       <PanelActualizaciones />

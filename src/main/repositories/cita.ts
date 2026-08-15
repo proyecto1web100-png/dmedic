@@ -1,10 +1,18 @@
 import { db } from '../db/conexion'
 import { ahoraIso } from '@shared/lib/fecha'
 import { nombreCompleto } from '@shared/lib/paciente'
-import type { Cita, CitaConPaciente, CitaInput, EstadoCita, SolapamientoCita } from '@shared/types'
+import type {
+  Cita,
+  CitaConPaciente,
+  CitaInput,
+  EstadoCita,
+  FiltroAgenda,
+  SolapamientoCita
+} from '@shared/types'
 
 interface FilaCita {
   id: number
+  doctor_id: number | null
   paciente_id: number | null
   nombre_provisional: string | null
   telefono_provisional: string | null
@@ -27,11 +35,13 @@ interface FilaCitaConPaciente extends FilaCita {
   segundo_apellido: string | null
   numero_expediente: string | null
   telefono_paciente: string | null
+  nombre_doctor: string | null
 }
 
 function aCita(f: FilaCita): Cita {
   return {
     id: f.id,
+    doctorId: f.doctor_id,
     pacienteId: f.paciente_id,
     nombreProvisional: f.nombre_provisional,
     telefonoProvisional: f.telefono_provisional,
@@ -62,35 +72,40 @@ function aCitaConPaciente(f: FilaCitaConPaciente): CitaConPaciente {
       : (f.nombre_provisional ?? 'Sin nombre'),
     numeroExpediente: f.numero_expediente,
     telefono: registrado ? f.telefono_paciente : f.telefono_provisional,
-    esPacienteRegistrado: registrado
+    esPacienteRegistrado: registrado,
+    nombreDoctor: f.nombre_doctor
   }
 }
 
 const SELECT_CON_PACIENTE = `
   SELECT c.*,
          p.primer_nombre, p.segundo_nombre, p.primer_apellido, p.segundo_apellido,
-         p.numero_expediente, p.telefono AS telefono_paciente
+         p.numero_expediente, p.telefono AS telefono_paciente,
+         u.nombre AS nombre_doctor
     FROM cita c
-    LEFT JOIN paciente p ON p.id = c.paciente_id`
+    LEFT JOIN paciente p ON p.id = c.paciente_id
+    LEFT JOIN usuario u  ON u.id = c.doctor_id`
 
 /** Las citas sin hora encabezan el día; el resto van en orden cronológico. */
 const ORDEN = 'ORDER BY c.fecha, c.hora IS NOT NULL, c.hora'
 
-export function crear(input: CitaInput): number {
+export function crear(input: CitaInput, creadaPor: number): number {
   const ahora = ahoraIso()
   const resultado = db()
     .prepare(
       `INSERT INTO cita (
-         paciente_id, nombre_provisional, telefono_provisional, fecha, hora,
+         doctor_id, paciente_id, nombre_provisional, telefono_provisional, fecha, hora,
          duracion_minutos, motivo, estado, notas, consulta_origen_id,
-         creada_en, actualizada_en
+         creada_por, creada_en, actualizada_en
        ) VALUES (
-         @pacienteId, @nombreProvisional, @telefonoProvisional, @fecha, @hora,
+         @doctorId, @pacienteId, @nombreProvisional, @telefonoProvisional, @fecha, @hora,
          @duracionMinutos, @motivo, 'agendada', @notas, @consultaOrigenId,
-         @ahora, @ahora
+         @creadaPor, @ahora, @ahora
        )`
     )
     .run({
+      doctorId: input.doctorId ?? null,
+      creadaPor,
       pacienteId: input.pacienteId ?? null,
       nombreProvisional: input.nombreProvisional ?? null,
       telefonoProvisional: input.telefonoProvisional ?? null,
@@ -109,7 +124,8 @@ export function actualizar(id: number, input: CitaInput): void {
   db()
     .prepare(
       `UPDATE cita SET
-         paciente_id = @pacienteId, nombre_provisional = @nombreProvisional,
+         doctor_id = @doctorId, paciente_id = @pacienteId,
+         nombre_provisional = @nombreProvisional,
          telefono_provisional = @telefonoProvisional, fecha = @fecha, hora = @hora,
          duracion_minutos = @duracionMinutos, motivo = @motivo, notas = @notas,
          actualizada_en = @ahora
@@ -117,6 +133,7 @@ export function actualizar(id: number, input: CitaInput): void {
     )
     .run({
       id,
+      doctorId: input.doctorId ?? null,
       pacienteId: input.pacienteId ?? null,
       nombreProvisional: input.nombreProvisional ?? null,
       telefonoProvisional: input.telefonoProvisional ?? null,
@@ -155,29 +172,42 @@ export function obtener(id: number): CitaConPaciente | null {
   return fila ? aCitaConPaciente(fila) : null
 }
 
-export function enRango(desde: string, hasta: string): CitaConPaciente[] {
+export function enRango(filtro: FiltroAgenda): CitaConPaciente[] {
+  const condiciones = ['c.fecha BETWEEN @desde AND @hasta']
+  const parametros: Record<string, unknown> = { desde: filtro.desde, hasta: filtro.hasta }
+
+  if (filtro.doctorId != null) {
+    condiciones.push('c.doctor_id = @doctorId')
+    parametros.doctorId = filtro.doctorId
+  }
+  if (filtro.incluirCanceladas === false) {
+    condiciones.push(`c.estado != 'cancelada'`)
+  }
+
   const filas = db()
-    .prepare(`${SELECT_CON_PACIENTE} WHERE c.fecha BETWEEN ? AND ? ${ORDEN}`)
-    .all(desde, hasta) as FilaCitaConPaciente[]
+    .prepare(`${SELECT_CON_PACIENTE} WHERE ${condiciones.join(' AND ')} ${ORDEN}`)
+    .all(parametros) as FilaCitaConPaciente[]
   return filas.map(aCitaConPaciente)
 }
 
-export function delDia(fecha: string): CitaConPaciente[] {
-  const filas = db()
-    .prepare(`${SELECT_CON_PACIENTE} WHERE c.fecha = ? ${ORDEN}`)
-    .all(fecha) as FilaCitaConPaciente[]
-  return filas.map(aCitaConPaciente)
+export function delDia(fecha: string, doctorId?: number | null): CitaConPaciente[] {
+  return enRango({ desde: fecha, hasta: fecha, doctorId })
 }
 
-export function proximas(desde: string, limite = 10): CitaConPaciente[] {
+export function proximas(
+  desde: string,
+  doctorId?: number | null,
+  limite = 10
+): CitaConPaciente[] {
+  const filtroDoctor = doctorId != null ? 'AND c.doctor_id = @doctorId' : ''
   const filas = db()
     .prepare(
       `${SELECT_CON_PACIENTE}
-        WHERE c.fecha > ? AND c.estado = 'agendada'
+        WHERE c.fecha > @desde AND c.estado = 'agendada' ${filtroDoctor}
         ${ORDEN}
-        LIMIT ?`
+        LIMIT @limite`
     )
-    .all(desde, limite) as FilaCitaConPaciente[]
+    .all({ desde, doctorId: doctorId ?? null, limite }) as FilaCitaConPaciente[]
   return filas.map(aCitaConPaciente)
 }
 
@@ -208,14 +238,17 @@ export function solapamientos(
   fecha: string,
   hora: string | null,
   duracionMinutos: number,
-  excluirId?: number
+  excluirId?: number,
+  doctorId?: number | null
 ): SolapamientoCita[] {
   if (hora === null) return []
 
   const inicio = aMinutos(hora)
   const fin = inicio + duracionMinutos
 
-  return delDia(fecha)
+  // El cruce solo importa dentro de la agenda del mismo doctor: dos doctores
+  // atendiendo a la misma hora en consultorios distintos es lo normal.
+  return delDia(fecha, doctorId)
     .filter(
       (c) =>
         c.id !== excluirId &&
@@ -232,9 +265,23 @@ export function solapamientos(
     }))
 }
 
-export function contarAgendadasEn(fecha: string): number {
+export function contarAgendadasEn(fecha: string, doctorId?: number | null): number {
+  const filtro = doctorId != null ? 'AND doctor_id = @doctorId' : ''
   const fila = db()
-    .prepare(`SELECT COUNT(*) AS total FROM cita WHERE fecha = ? AND estado = 'agendada'`)
-    .get(fecha) as { total: number }
+    .prepare(
+      `SELECT COUNT(*) AS total FROM cita
+        WHERE fecha = @fecha AND estado = 'agendada' ${filtro}`
+    )
+    .get({ fecha, doctorId: doctorId ?? null }) as { total: number }
   return fila.total
+}
+
+export function doctoresConAgenda(): { id: number; nombre: string }[] {
+  return db()
+    .prepare(
+      `SELECT id, nombre FROM usuario
+        WHERE rol = 'doctor' AND activo = 1
+        ORDER BY nombre`
+    )
+    .all() as { id: number; nombre: string }[]
 }

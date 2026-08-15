@@ -12,6 +12,7 @@ import { configuracion, guardarConfiguracion } from '../repositories/sistema'
 import type {
   Alergia,
   Antecedente,
+  Cie10,
   CitaInput,
   ConfiguracionClinica,
   ConsultaInput,
@@ -19,6 +20,7 @@ import type {
   FiltroHistorial,
   MedicamentoInput,
   PacienteInput,
+  PeriodoReporte,
   PlantillaTratamiento,
   UsuarioInput
 } from '@shared/types'
@@ -152,10 +154,22 @@ export function registrarCanales(): void {
   // ===== Agenda =====
   const verAgenda = { permiso: 'citas.ver' } as const
   const gestionarAgenda = { permiso: 'citas.gestionar' } as const
-  canal('citas:enRango', (desde: string, hasta: string) => citas.enRango(desde, hasta), verAgenda)
+  canal(
+    'citas:enRango',
+    (desde: string, hasta: string, doctorId?: number | null) =>
+      citas.enRango(desde, hasta, doctorId),
+    verAgenda
+  )
   canal('citas:obtener', (id: number) => citas.obtener(id), verAgenda)
   canal('citas:dePaciente', (pacienteId: number) => citas.dePaciente(pacienteId), verAgenda)
   canal('citas:resumen', () => citas.resumen(), verAgenda)
+  canal('citas:doctores', () => citas.doctores(), verAgenda)
+  canal(
+    'citas:reporte',
+    (periodo: PeriodoReporte, referencia: string, doctorId: number | null) =>
+      citas.reporte(periodo, referencia, doctorId),
+    { permiso: 'citas.reportes' }
+  )
   canal('citas:crear', (entrada: CitaInput) => citas.crear(entrada), gestionarAgenda)
   canal('citas:actualizar', (id: number, entrada: CitaInput) => citas.actualizar(id, entrada),
     gestionarAgenda)
@@ -164,8 +178,13 @@ export function registrarCanales(): void {
   canal('citas:eliminar', (id: number) => citas.eliminar(id), gestionarAgenda)
   canal(
     'citas:comprobarSolapamiento',
-    (fecha: string, hora: string | null, duracionMinutos: number, excluirId?: number) =>
-      citas.comprobarSolapamiento(fecha, hora, duracionMinutos, excluirId),
+    (
+      fecha: string,
+      hora: string | null,
+      duracionMinutos: number,
+      excluirId?: number,
+      doctorId?: number | null
+    ) => citas.comprobarSolapamiento(fecha, hora, duracionMinutos, excluirId, doctorId),
     verAgenda
   )
 
@@ -189,11 +208,30 @@ export function registrarCanales(): void {
     catalogo.guardarPlantilla(datos), gestionarCatalogo)
   canal('catalogo:eliminarPlantilla', (id: number) =>
     catalogo.eliminarPlantilla(id), gestionarCatalogo)
+  canal('catalogo:listarCie10', (soloPersonalizados?: boolean) =>
+    catalogo.listarCie10(soloPersonalizados ?? false), verCatalogo)
+  canal('catalogo:crearCie10', (datos: Cie10) => catalogo.crearCie10(datos), gestionarCatalogo)
+  canal(
+    'catalogo:actualizarCie10',
+    (codigo: string, datos: { descripcion: string; categoria: string | null }) =>
+      catalogo.actualizarCie10(codigo, datos),
+    gestionarCatalogo
+  )
+  canal('catalogo:eliminarCie10', (codigo: string) =>
+    catalogo.eliminarCie10(codigo), gestionarCatalogo)
 
   // ===== Documentos =====
   const documentar = { permiso: 'documentos.generar' } as const
-  canal('documentos:generar', (consultaId: number, tipo: documentos.TipoDocumento) =>
+  canal('documentos:generar', (consultaId: number, tipo: 'receta' | 'resumen_consulta') =>
     documentos.generarDocumento(consultaId, tipo), documentar)
+  canal('documentos:expediente', (pacienteId: number) =>
+    documentos.generarExpediente(pacienteId), documentar)
+  canal(
+    'documentos:reporteCitas',
+    (periodo: PeriodoReporte, referencia: string, doctorId: number | null) =>
+      documentos.generarReporteCitas(periodo, referencia, doctorId),
+    { permiso: 'citas.reportes' }
+  )
   canal('documentos:abrir', (ruta: string) => documentos.abrirDocumento(ruta), documentar)
   canal('documentos:revelar', (ruta: string) => documentos.revelarEnCarpeta(ruta), documentar)
   canal('documentos:dePaciente', (pacienteId: number) =>

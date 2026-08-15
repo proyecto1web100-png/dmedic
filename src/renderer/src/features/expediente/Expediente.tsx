@@ -6,6 +6,7 @@ import {
   Columns2,
   LayoutList,
   Plus,
+  Printer,
   Rows3,
   Search as Lupa,
   Trash2
@@ -47,6 +48,7 @@ export function Expediente(): React.JSX.Element {
   const [comparando, setComparando] = useState<[number, number] | null>(null)
   const [eliminando, setEliminando] = useState(false)
   const [cargando, setCargando] = useState(true)
+  const [imprimiendo, setImprimiendo] = useState(false)
 
   const { puede } = useSesion()
   const verClinico = puede('pacientes.ver_clinico')
@@ -99,6 +101,20 @@ export function Expediente(): React.JSX.Element {
     }
   }
 
+  /** Expediente completo en PDF tamaño carta: datos, alergias e historial íntegro. */
+  async function imprimirExpediente(): Promise<void> {
+    setImprimiendo(true)
+    try {
+      const documento = await pedir(api.documentos.expediente(pacienteId))
+      notificar.exito('Expediente generado y archivado en la carpeta del paciente')
+      await pedir(api.documentos.abrir(documento.ruta))
+    } catch (error) {
+      notificar.error(mensajeDeError(error))
+    } finally {
+      setImprimiendo(false)
+    }
+  }
+
   async function imprimir(consultaId: number, tipo: 'receta' | 'resumen_consulta'): Promise<void> {
     try {
       const documento = await pedir(api.documentos.generar(consultaId, tipo))
@@ -147,6 +163,17 @@ export function Expediente(): React.JSX.Element {
           Pacientes
         </Boton>
         <div className="flex items-center gap-2">
+          {verClinico && (
+            <Boton
+              tamano="sm"
+              variante="fantasma"
+              iconoIzquierda={<Printer size={14} />}
+              cargando={imprimiendo}
+              onClick={() => void imprimirExpediente()}
+            >
+              Imprimir expediente
+            </Boton>
+          )}
           {puede('pacientes.archivar') && (
             <Boton
               tamano="sm"

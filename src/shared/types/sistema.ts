@@ -26,6 +26,8 @@ export interface ConfiguracionClinica {
   especialidad: string | null
   tema: 'claro' | 'oscuro'
   tamanoFuente: 'normal' | 'grande'
+  /** Papel de la receta. Los demás documentos siempre son carta. */
+  tamanoReceta: 'carta' | 'media_carta'
 }
 
 export interface ResumenDashboard {

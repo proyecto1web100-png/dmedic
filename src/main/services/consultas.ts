@@ -11,7 +11,8 @@ import type {
   ConsultaInput,
   ConsultaResumen,
   FiltroHistorial,
-  ResumenDashboard
+  ResumenDashboard,
+  Sesion
 } from '@shared/types'
 import { nombreCompleto } from '@shared/lib/paciente'
 
@@ -40,6 +41,7 @@ export function crear(entrada: ConsultaInput): number {
   citas.sincronizarDesdeConsulta(
     id,
     datos.pacienteId,
+    sesion.usuarioId,
     datos.sinProximaCita ? null : (datos.proximaCitaFecha ?? null)
   )
   if (datos.citaId) citas.vincularConsulta(datos.citaId, id)
@@ -65,22 +67,24 @@ export class ErrorConsultaAjena extends Error {
 }
 
 /** Solo su autor corrige una consulta. Los demás dejan constancia con una adenda. */
-function exigirAutoria(id: number): void {
+function exigirAutoria(id: number): Sesion {
   const sesion = exigirSesion()
   const consulta = repo.obtenerCompleta(id)
   if (!consulta) throw new Error('La consulta no existe')
   if (consulta.usuarioId !== null && consulta.usuarioId !== sesion.usuarioId) {
     throw new ErrorConsultaAjena(consulta.nombreDoctor)
   }
+  return sesion
 }
 
 export function actualizar(id: number, entrada: ConsultaInput): void {
-  exigirAutoria(id)
+  const sesion = exigirAutoria(id)
   const datos = validar(entrada)
   repo.actualizar(id, datos)
   citas.sincronizarDesdeConsulta(
     id,
     datos.pacienteId,
+    sesion.usuarioId,
     datos.sinProximaCita ? null : (datos.proximaCitaFecha ?? null)
   )
   auditar({ accion: 'consulta.editada', entidad: 'consulta', entidadId: id })

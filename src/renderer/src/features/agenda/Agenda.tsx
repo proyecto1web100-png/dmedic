@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { CalendarDays, ChevronLeft, ChevronRight, Plus } from 'lucide-react'
+import { CalendarDays, ChevronLeft, ChevronRight, Plus, Printer } from 'lucide-react'
 import { Boton } from '../../components/ui/Boton'
 import { Aviso, Cargando, Vacio } from '../../components/ui/Varios'
 import { api, mensajeDeError, pedir } from '../../lib/api'
@@ -22,6 +22,7 @@ import {
 } from './calendario'
 import { FormularioCita } from './FormularioCita'
 import { TarjetaCita, PanelCita } from './TarjetaCita'
+import { ReporteAgenda } from './ReporteAgenda'
 import type { CitaConPaciente } from '@shared/types'
 
 export function Agenda(): React.JSX.Element {
@@ -40,17 +41,33 @@ export function Agenda(): React.JSX.Element {
   const { puede } = useSesion()
   const gestiona = puede('citas.gestionar')
   const puedeAtender = puede('consultas.crear')
+  // La secretaría ve la agenda de todos; un doctor solo la suya.
+  const verTodos = puede('citas.gestionar_todas')
+  const [filtroDoctor, setFiltroDoctor] = useState<number | null>(null)
+  const [doctores, setDoctores] = useState<{ id: number; nombre: string }[]>([])
+  const [reporte, setReporte] = useState(false)
 
   const cargar = useCallback(async () => {
     try {
       const { desde, hasta } = rangoVisible(referencia, vista)
-      setCitas(await pedir(api.citas.enRango(desde, hasta)))
+      setCitas(await pedir(api.citas.enRango(desde, hasta, filtroDoctor)))
     } catch (error) {
       notificar.error(mensajeDeError(error))
     } finally {
       setCargando(false)
     }
-  }, [referencia, vista, notificar])
+  }, [referencia, vista, notificar, filtroDoctor])
+
+  useEffect(() => {
+    if (!verTodos) return
+    void (async () => {
+      try {
+        setDoctores(await pedir(api.citas.doctores()))
+      } catch {
+        setDoctores([])
+      }
+    })()
+  }, [verTodos])
 
   useEffect(() => {
     void cargar()
@@ -95,6 +112,30 @@ export function Agenda(): React.JSX.Element {
         </div>
 
         <div className="flex items-center gap-2">
+          {verTodos && (
+            <select
+              value={filtroDoctor === null ? '' : String(filtroDoctor)}
+              onChange={(e) => setFiltroDoctor(e.target.value ? Number(e.target.value) : null)}
+              aria-label="Filtrar por doctor"
+              className="campo-base h-8 w-44 cursor-pointer text-[0.8125rem]"
+            >
+              <option value="">Todos los doctores</option>
+              {doctores.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.nombre}
+                </option>
+              ))}
+            </select>
+          )}
+          {puede('citas.reportes') && (
+            <Boton
+              tamano="sm"
+              iconoIzquierda={<Printer size={14} />}
+              onClick={() => setReporte(true)}
+            >
+              Reporte
+            </Boton>
+          )}
           <div className="flex rounded-lg border border-[var(--borde)] p-0.5">
             {(['dia', 'semana', 'mes'] as Vista[]).map((v) => (
               <button
@@ -122,12 +163,11 @@ export function Agenda(): React.JSX.Element {
         </div>
       </header>
 
-      {!gestiona && (
+      {!verTodos && (
         <div className="mb-4">
           <Aviso tono="info">
-            Está viendo la agenda en modo consulta. Crear, mover o cancelar citas corresponde a la
-            secretaría. Las citas de control que usted indique al cerrar una consulta se agendan
-            automáticamente.
+            Está viendo <strong>su</strong> agenda. Las citas que cree aquí se le asignan
+            automáticamente; la secretaría es quien puede agendar para otros doctores.
           </Aviso>
         </div>
       )}
@@ -160,6 +200,10 @@ export function Agenda(): React.JSX.Element {
           onAgendar={() => setFormulario({ fecha: referencia })}
           onCita={setSeleccionada}
         />
+      )}
+
+      {reporte && (
+        <ReporteAgenda fechaInicial={referencia} onCerrar={() => setReporte(false)} />
       )}
 
       <FormularioCita

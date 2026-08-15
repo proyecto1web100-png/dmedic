@@ -21,7 +21,9 @@ import type {
   MedicamentoInput,
   PacienteConResumen,
   PacienteInput,
+  PeriodoReporte,
   PlantillaTratamiento,
+  ReporteCitas,
   Resultado,
   ResumenAgenda,
   ResumenDashboard,
@@ -116,12 +118,15 @@ const api = {
     dashboard: () => invocar<ResumenDashboard>('consultas:dashboard')
   },
   citas: {
-    enRango: (desde: string, hasta: string) =>
-      invocar<CitaConPaciente[]>('citas:enRango', desde, hasta),
+    enRango: (desde: string, hasta: string, doctorId?: number | null) =>
+      invocar<CitaConPaciente[]>('citas:enRango', desde, hasta, doctorId),
     obtener: (id: number) => invocar<CitaConPaciente>('citas:obtener', id),
     dePaciente: (pacienteId: number) =>
       invocar<CitaConPaciente[]>('citas:dePaciente', pacienteId),
     resumen: () => invocar<ResumenAgenda>('citas:resumen'),
+    doctores: () => invocar<{ id: number; nombre: string }[]>('citas:doctores'),
+    reporte: (periodo: PeriodoReporte, referencia: string, doctorId: number | null) =>
+      invocar<ReporteCitas>('citas:reporte', periodo, referencia, doctorId),
     crear: (entrada: CitaInput) =>
       invocar<{ id: number; solapamientos: SolapamientoCita[] }>('citas:crear', entrada),
     actualizar: (id: number, entrada: CitaInput) =>
@@ -133,14 +138,16 @@ const api = {
       fecha: string,
       hora: string | null,
       duracionMinutos: number,
-      excluirId?: number
+      excluirId?: number,
+      doctorId?: number | null
     ) =>
       invocar<SolapamientoCita[]>(
         'citas:comprobarSolapamiento',
         fecha,
         hora,
         duracionMinutos,
-        excluirId
+        excluirId,
+        doctorId
       )
   },
   catalogo: {
@@ -158,11 +165,26 @@ const api = {
     listarPlantillas: () => invocar<PlantillaTratamiento[]>('catalogo:listarPlantillas'),
     guardarPlantilla: (datos: PlantillaTratamiento) =>
       invocar<number>('catalogo:guardarPlantilla', datos),
-    eliminarPlantilla: (id: number) => invocar<void>('catalogo:eliminarPlantilla', id)
+    eliminarPlantilla: (id: number) => invocar<void>('catalogo:eliminarPlantilla', id),
+    listarCie10: (soloPersonalizados?: boolean) =>
+      invocar<Cie10[]>('catalogo:listarCie10', soloPersonalizados),
+    crearCie10: (datos: Cie10) => invocar<string>('catalogo:crearCie10', datos),
+    actualizarCie10: (codigo: string, datos: { descripcion: string; categoria: string | null }) =>
+      invocar<void>('catalogo:actualizarCie10', codigo, datos),
+    eliminarCie10: (codigo: string) => invocar<void>('catalogo:eliminarCie10', codigo)
   },
   documentos: {
     generar: (consultaId: number, tipo: 'receta' | 'resumen_consulta') =>
       invocar<{ ruta: string; tipo: string }>('documentos:generar', consultaId, tipo),
+    expediente: (pacienteId: number) =>
+      invocar<{ ruta: string; tipo: string }>('documentos:expediente', pacienteId),
+    reporteCitas: (periodo: PeriodoReporte, referencia: string, doctorId: number | null) =>
+      invocar<{ ruta: string; tipo: string }>(
+        'documentos:reporteCitas',
+        periodo,
+        referencia,
+        doctorId
+      ),
     abrir: (ruta: string) => invocar<void>('documentos:abrir', ruta),
     revelar: (ruta: string) => invocar<void>('documentos:revelar', ruta),
     dePaciente: (pacienteId: number) =>

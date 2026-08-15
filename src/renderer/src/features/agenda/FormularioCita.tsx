@@ -6,6 +6,7 @@ import { Modal } from '../../components/ui/Modal'
 import { Aviso } from '../../components/ui/Varios'
 import { api, mensajeDeError, pedir } from '../../lib/api'
 import { useNotificar } from '../../app/Notificaciones'
+import { useSesion } from '../../app/Sesion'
 import { useBusquedaPacientes } from '../pacientes/useBusquedaPacientes'
 import { horaFin } from './calendario'
 import type { CitaConPaciente, CitaInput, PacienteConResumen, SolapamientoCita } from '@shared/types'
@@ -47,12 +48,31 @@ export function FormularioCita({
   const [error, setError] = useState<string | null>(null)
   const [guardando, setGuardando] = useState(false)
 
+  // Solo la secretaría elige doctor; un doctor siempre se la asigna a sí mismo.
+  const { estado, puede } = useSesion()
+  const eligeDoctor = puede('citas.gestionar_todas')
+  const [doctorId, setDoctorId] = useState<number | null>(null)
+  const [doctores, setDoctores] = useState<{ id: number; nombre: string }[]>([])
+
   const editando = cita !== undefined
+
+  useEffect(() => {
+    if (!abierto || !eligeDoctor) return
+    void (async () => {
+      try {
+        setDoctores(await pedir(api.citas.doctores()))
+      } catch {
+        setDoctores([])
+      }
+    })()
+  }, [abierto, eligeDoctor])
 
   useEffect(() => {
     if (!abierto) return
     setError(null)
     setCruces([])
+
+    setDoctorId(cita?.doctorId ?? (eligeDoctor ? null : (estado?.sesion?.usuarioId ?? null)))
 
     if (cita) {
       setPacienteId(cita.pacienteId)
@@ -75,7 +95,7 @@ export function FormularioCita({
       setMotivo('')
       setNotas('')
     }
-  }, [abierto, cita, fechaInicial, pacienteFijo])
+  }, [abierto, cita, fechaInicial, pacienteFijo, eligeDoctor, estado?.sesion?.usuarioId])
 
   // Aviso de cruce mientras se elige el horario, antes de guardar.
   useEffect(() => {
@@ -87,7 +107,7 @@ export function FormularioCita({
     const temporizador = window.setTimeout(async () => {
       try {
         const encontrados = await pedir(
-          api.citas.comprobarSolapamiento(fecha, hora, duracion, cita?.id)
+          api.citas.comprobarSolapamiento(fecha, hora, duracion, cita?.id, doctorId)
         )
         if (vigente) setCruces(encontrados)
       } catch {
@@ -98,13 +118,14 @@ export function FormularioCita({
       vigente = false
       window.clearTimeout(temporizador)
     }
-  }, [abierto, fecha, hora, duracion, cita?.id])
+  }, [abierto, fecha, hora, duracion, cita?.id, doctorId])
 
   async function guardar(): Promise<void> {
     setError(null)
     setGuardando(true)
     try {
       const carga: CitaInput = {
+        doctorId,
         pacienteId,
         nombreProvisional: pacienteId ? null : nombreProvisional.trim() || null,
         telefonoProvisional: pacienteId ? null : telefonoProvisional.trim() || null,
@@ -146,7 +167,11 @@ export function FormularioCita({
           <Boton
             variante="primario"
             cargando={guardando}
-            disabled={!fecha || (!pacienteId && nombreProvisional.trim().length < 2)}
+            disabled={
+              !fecha ||
+              (eligeDoctor && doctorId === null) ||
+              (!pacienteId && nombreProvisional.trim().length < 2)
+            }
             onClick={() => void guardar()}
           >
             {editando ? 'Guardar cambios' : 'Agendar'}
@@ -156,6 +181,22 @@ export function FormularioCita({
     >
       <div className="flex flex-col gap-4">
         {error && <Aviso tono="critico">{error}</Aviso>}
+
+        {eligeDoctor ? (
+          <Selector
+            etiqueta="Doctor que atenderá"
+            requerido
+            value={doctorId === null ? '' : String(doctorId)}
+            onChange={(e) => setDoctorId(e.target.value ? Number(e.target.value) : null)}
+            opciones={doctores.map((d) => ({ valor: String(d.id), etiqueta: d.nombre }))}
+            marcador="Seleccione un doctor"
+            ayuda="La cita aparecerá en la agenda de ese doctor."
+          />
+        ) : (
+          <p className="text-[0.875rem] text-[var(--tinta-suave)]">
+            La cita se agenda en <strong>su</strong> agenda ({estado?.sesion?.nombre}).
+          </p>
+        )}
 
         {pacienteFijo === undefined && (
           <SelectorPaciente

@@ -311,10 +311,38 @@ ALTER TABLE auditoria ADD COLUMN usuario_id INTEGER;
 ALTER TABLE auditoria ADD COLUMN usuario_nombre TEXT;
 `
 
+/**
+ * Cada cita pasa a pertenecer a un doctor concreto: sin eso no se puede separar
+ * la agenda de cada uno ni emitir reportes por doctor.
+ */
+const AGENDA_POR_DOCTOR = `
+ALTER TABLE cita ADD COLUMN doctor_id INTEGER REFERENCES usuario(id);
+
+-- Si la cita nacio de una consulta, pertenece al doctor que la atendio.
+UPDATE cita
+   SET doctor_id = (SELECT c.usuario_id FROM consulta c WHERE c.id = cita.consulta_origen_id)
+ WHERE doctor_id IS NULL AND consulta_origen_id IS NOT NULL;
+
+-- El resto se atribuye al primer doctor, para que ninguna quede huerfana.
+UPDATE cita
+   SET doctor_id = (SELECT MIN(id) FROM usuario WHERE rol = 'doctor')
+ WHERE doctor_id IS NULL;
+
+CREATE INDEX idx_cita_doctor ON cita(doctor_id, fecha);
+
+-- Diagnosticos propios de la clinica, que no vienen del catalogo base.
+ALTER TABLE cie10 ADD COLUMN es_personalizado INTEGER NOT NULL DEFAULT 0;
+
+ALTER TABLE configuracion_clinica
+  ADD COLUMN tamano_receta TEXT NOT NULL DEFAULT 'carta'
+  CHECK (tamano_receta IN ('carta','media_carta'));
+`
+
 const MIGRACIONES: Migracion[] = [
   { version: 1, nombre: 'esquema_inicial', sql: ESQUEMA_INICIAL },
   { version: 2, nombre: 'agenda_de_citas', sql: AGENDA },
-  { version: 3, nombre: 'usuarios_y_roles', sql: USUARIOS_Y_ROLES }
+  { version: 3, nombre: 'usuarios_y_roles', sql: USUARIOS_Y_ROLES },
+  { version: 4, nombre: 'agenda_por_doctor', sql: AGENDA_POR_DOCTOR }
 ]
 
 /** Version de esquema que este programa sabe manejar. */

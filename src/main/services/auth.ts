@@ -113,7 +113,8 @@ export async function instalar(datos: {
     nombreDoctor: datos.nombreDoctor,
     especialidad: 'Medicina General',
     tema: 'claro',
-    tamanoFuente: 'normal'
+    tamanoFuente: 'normal',
+    tamanoReceta: 'carta'
   })
 
   const usuario = sistema.usuarioPorId(id)

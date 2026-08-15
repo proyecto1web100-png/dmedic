@@ -54,7 +54,10 @@ toda operación pasa por un canal IPC concreto y validado.
 | Registrar pacientes y editar contacto | Sí | Sí | Sí |
 | Alergias, antecedentes, crónicos | Sí | No | Sí |
 | Ver la agenda | Sí | Sí | Sí |
-| **Crear, mover y cancelar citas** | **No** | **Sí** | No |
+| Gestionar **su propia** agenda | Sí | — | Sí |
+| Agendar **para otro doctor** | **No** | **Sí** | No |
+| Reportes de agenda en PDF | Sí (la suya) | Sí (todos) | Sí |
+| Diagnósticos propios y protocolos | Sí | No | Sí |
 | Gestionar usuarios | No | No | Sí |
 | Restaurar copias de seguridad | No | No | Sí |
 | Eliminar expedientes definitivamente | No | No | Sí |
@@ -70,8 +73,25 @@ Reglas que se aplican en el proceso principal, no en la interfaz:
   registrada** en la auditoría con el nombre de quien la hizo.
 - La receta se firma con el nombre del doctor que atendió la consulta, no con
   el configurado a nivel de clínica.
-- La cita de control que un doctor indica al cerrar una consulta se agenda sola:
-  la genera el acto clínico, no una persona.
+- La cita de control que un doctor indica al cerrar una consulta se agenda sola,
+  en la agenda de ese mismo doctor.
+- Un doctor solo ve y modifica **su** agenda. La secretaría ve la de todos y es
+  la única que puede asignar una cita a otro doctor.
+- El cruce de horarios se evalúa dentro de la agenda de cada doctor: dos
+  doctores atendiendo a la misma hora no es un conflicto.
+
+## Documentos en PDF
+
+Todos en **tamaño carta** (612 × 792 pt), salvo la receta, que es configurable.
+El banco de pruebas verifica el `MediaBox` de cada PDF generado: es la única
+comprobación fiable de que saldrá en el papel correcto.
+
+| Documento | Contenido | Dónde se guarda |
+|---|---|---|
+| Receta | Prescripción con alergias visibles y firma del doctor que atendió | `expedientes/<paciente>/Recetas` |
+| Resumen de consulta | Una consulta completa | `expedientes/<paciente>/Consultas` |
+| Expediente | Datos, contactos, alergias, antecedentes, crónicos e historial íntegro | `expedientes/<paciente>/Documentos` |
+| Reporte de agenda | Citas por día, semana o mes, de un doctor o de todos | `reportes/` |
 
 ## Módulos
 

@@ -1,5 +1,6 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import {
+  BookMarked,
   CalendarDays,
   LayoutDashboard,
   LogOut,
@@ -26,6 +27,13 @@ const ENLACES: {
   { a: '/', etiqueta: 'Inicio', icono: LayoutDashboard, exacto: true },
   { a: '/pacientes', etiqueta: 'Pacientes', icono: Users, exacto: false, permiso: 'pacientes.ver' },
   { a: '/agenda', etiqueta: 'Agenda', icono: CalendarDays, exacto: false, permiso: 'citas.ver' },
+  {
+    a: '/catalogo',
+    etiqueta: 'Catálogo',
+    icono: BookMarked,
+    exacto: false,
+    permiso: 'catalogo.gestionar'
+  },
   {
     a: '/equipo',
     etiqueta: 'Equipo',

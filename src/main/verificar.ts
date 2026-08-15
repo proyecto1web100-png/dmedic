@@ -6,7 +6,7 @@
  *   npm run verificar
  */
 import { app } from 'electron'
-import { existsSync, mkdtempSync, rmSync, statSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -44,6 +44,26 @@ async function debeFallar(descripcion: string, operacion: () => unknown): Promis
 
 function grupo(titulo: string): void {
   console.log(`\n${titulo}`)
+}
+
+/**
+ * Lee el MediaBox del PDF, que define el tamaño real de la página en puntos
+ * (1 pt = 1/72"). Carta = 612 x 792. Es la única comprobación fiable de que el
+ * documento saldrá en el papel correcto.
+ */
+function tamanoDePagina(ruta: string): { ancho: number; alto: number } | null {
+  const contenido = readFileSync(ruta).toString('latin1')
+  const coincidencia = contenido.match(
+    /MediaBox\s*\[\s*[\d.-]+\s+[\d.-]+\s+([\d.]+)\s+([\d.]+)/
+  )
+  if (!coincidencia) return null
+  return { ancho: Number(coincidencia[1]), alto: Number(coincidencia[2]) }
+}
+
+function esCarta(ruta: string): boolean {
+  const tamano = tamanoDePagina(ruta)
+  if (!tamano) return false
+  return Math.abs(tamano.ancho - 612) < 2 && Math.abs(tamano.alto - 792) < 2
 }
 
 async function ejecutar(): Promise<void> {
@@ -398,6 +418,8 @@ async function ejecutar(): Promise<void> {
   const resumen = await documentos.generarDocumento(idConsulta, 'resumen_consulta')
   comprobar('genera el PDF del resumen de consulta', existsSync(resumen.ruta))
   comprobar('el PDF del resumen no está vacío', statSync(resumen.ruta).size > 1000)
+  comprobar('el resumen sale en tamaño carta exacto', esCarta(resumen.ruta))
+  comprobar('la receta sale en tamaño carta exacto', esCarta(receta.ruta))
   comprobar(
     'los documentos quedan registrados en el expediente',
     documentos.documentosDePaciente(idPaciente).length === 2
@@ -652,7 +674,8 @@ async function ejecutar(): Promise<void> {
   )
   comprobar(
     'la secretaria puede agendar',
-    citas.crear({ pacienteId: idPaciente, fecha: manana, hora: '08:00' }).id > 0
+    citas.crear({ doctorId: idDoctor1, pacienteId: idPaciente, fecha: manana, hora: '08:00' }).id >
+      0
   )
   await debeFallar('la secretaria no puede listar usuarios', () => auth.listarUsuarios())
 
@@ -665,7 +688,11 @@ async function ejecutar(): Promise<void> {
   comprobar('el doctor ve datos clínicos', permisosDoctor.has('pacientes.ver_clinico'))
   comprobar('el doctor crea consultas', permisosDoctor.has('consultas.crear'))
   comprobar('el doctor ve la agenda', permisosDoctor.has('citas.ver'))
-  comprobar('el doctor NO gestiona la agenda', !permisosDoctor.has('citas.gestionar'))
+  comprobar('el doctor gestiona su propia agenda', permisosDoctor.has('citas.gestionar'))
+  comprobar(
+    'el doctor NO gestiona la agenda de los demás',
+    !permisosDoctor.has('citas.gestionar_todas')
+  )
   comprobar('el doctor sin administración NO gestiona usuarios', !permisosDoctor.has('usuarios.gestionar'))
   comprobar('el doctor NO elimina expedientes', !permisosDoctor.has('pacientes.eliminar'))
 
@@ -712,6 +739,182 @@ async function ejecutar(): Promise<void> {
     'los expedientes son compartidos entre doctores',
     pacientes.expediente(idPaciente).paciente.id === idPaciente
   )
+
+  grupo('Agenda por doctor')
+  auth.salir()
+  await auth.entrar(idDoctor2, 'clave-doctor-dos')
+
+  const citaPropia = citas.crear({ pacienteId: idPaciente, fecha: manana, hora: '10:00' })
+  comprobar(
+    'un doctor se agenda a sí mismo automáticamente',
+    citas.obtener(citaPropia.id).doctorId === idDoctor2
+  )
+  await debeFallar('un doctor no puede agendar para otro', () =>
+    citas.crear({ doctorId: idDoctor1, pacienteId: idPaciente, fecha: manana, hora: '10:30' })
+  )
+  comprobar(
+    'el doctor solo ve su propia agenda',
+    citas.enRango(manana, manana).every((c) => c.doctorId === idDoctor2)
+  )
+
+  auth.salir()
+  await auth.entrar(idSecretaria, 'clave-secretaria')
+  const citaAsignada = citas.crear({
+    doctorId: idDoctor1,
+    pacienteId: idPaciente,
+    fecha: manana,
+    hora: '12:00',
+    motivo: 'Asignada por secretaría'
+  })
+  comprobar(
+    'la secretaría asigna la cita al doctor elegido',
+    citas.obtener(citaAsignada.id).doctorId === idDoctor1
+  )
+  await debeFallar('la secretaría debe indicar un doctor', () =>
+    citas.crear({ pacienteId: idPaciente, fecha: manana, hora: '13:00' })
+  )
+  await debeFallar('rechaza un doctor inexistente', () =>
+    citas.crear({ doctorId: 99_999, pacienteId: idPaciente, fecha: manana })
+  )
+  comprobar(
+    'la secretaría ve la agenda de todos',
+    citas.enRango(manana, manana).some((c) => c.doctorId === idDoctor2)
+  )
+  comprobar(
+    'la secretaría puede filtrar por doctor',
+    citas.enRango(manana, manana, idDoctor1).every((c) => c.doctorId === idDoctor1)
+  )
+  comprobar('la cita incluye el nombre del doctor', citas.obtener(citaAsignada.id).nombreDoctor !== null)
+
+  auth.salir()
+  await auth.entrar(idDoctor2, 'clave-doctor-dos')
+  await debeFallar('un doctor no puede editar la cita de otro', () =>
+    citas.actualizar(citaAsignada.id, {
+      doctorId: idDoctor2,
+      pacienteId: idPaciente,
+      fecha: manana,
+      hora: '12:30'
+    })
+  )
+  await debeFallar('un doctor no puede cancelar la cita de otro', () =>
+    citas.cambiarEstado(citaAsignada.id, 'cancelada')
+  )
+  citas.cambiarEstado(citaPropia.id, 'cancelada')
+  comprobar('sí puede cancelar la suya', citas.obtener(citaPropia.id).estado === 'cancelada')
+
+  comprobar(
+    'el cruce solo se evalúa dentro de la agenda del mismo doctor',
+    citas.comprobarSolapamiento(manana, '12:00', 30).length === 0
+  )
+
+  grupo('Reportes de agenda')
+  auth.salir()
+  await auth.entrar(idSecretaria, 'clave-secretaria')
+
+  const reporteDia = citas.reporte('dia', manana, idDoctor1)
+  comprobar('el reporte del día acota el rango', reporteDia.desde === reporteDia.hasta)
+  comprobar('el reporte identifica al doctor', reporteDia.nombreDoctor !== null)
+  comprobar(
+    'el reporte solo trae citas de ese doctor',
+    reporteDia.citas.every((c) => c.doctorId === idDoctor1)
+  )
+  comprobar(
+    'los totales cuadran con las citas',
+    reporteDia.totales.agendadas +
+      reporteDia.totales.atendidas +
+      reporteDia.totales.noAsistio +
+      reporteDia.totales.canceladas ===
+      reporteDia.citas.length
+  )
+
+  const reporteSemana = citas.reporte('semana', manana, null)
+  comprobar('el reporte semanal abarca siete días', reporteSemana.desde < reporteSemana.hasta)
+  comprobar('sin doctor, el reporte incluye a todos', reporteSemana.doctorId === null)
+
+  const reporteMes = citas.reporte('mes', manana, null)
+  comprobar(
+    'el reporte mensual empieza el día 1',
+    reporteMes.desde.endsWith('-01')
+  )
+  comprobar(
+    'el rango mensual contiene al semanal',
+    reporteMes.desde <= reporteSemana.desde || reporteMes.hasta >= reporteSemana.hasta
+  )
+
+  const pdfReporte = await documentos.generarReporteCitas('dia', manana, idDoctor1)
+  comprobar('genera el PDF del reporte de agenda', existsSync(pdfReporte.ruta))
+  comprobar('el PDF del reporte no está vacío', statSync(pdfReporte.ruta).size > 1000)
+  comprobar('el reporte de agenda sale en tamaño carta exacto', esCarta(pdfReporte.ruta))
+
+  grupo('Expediente impreso')
+  auth.salir()
+  await auth.entrar(idDoctor1, 'contrasena-de-prueba')
+  const pdfExpediente = await documentos.generarExpediente(idPaciente)
+  comprobar('genera el PDF del expediente completo', existsSync(pdfExpediente.ruta))
+  comprobar(
+    'el expediente pesa más que una receta (trae todo el historial)',
+    statSync(pdfExpediente.ruta).size > 5000
+  )
+  comprobar(
+    'el expediente se archiva en la carpeta del paciente',
+    pdfExpediente.ruta.includes('EXP-') && pdfExpediente.ruta.includes('Documentos')
+  )
+  comprobar('el expediente sale en tamaño carta exacto', esCarta(pdfExpediente.ruta))
+
+  grupo('Diagnósticos propios y protocolos')
+  const codigoPropio = catalogo.crearCie10({
+    codigo: 'loc-01',
+    descripcion: 'Control de crecimiento local',
+    categoria: null
+  })
+  comprobar('crea un diagnóstico propio en mayúsculas', codigoPropio === 'LOC-01')
+  comprobar(
+    'aparece en el buscador junto a los oficiales',
+    catalogo.buscarCie10('LOC-01').some((c) => c.codigo === 'LOC-01')
+  )
+  comprobar('se lista como personalizado', catalogo.listarCie10(true).length === 1)
+  await debeFallar('rechaza un código repetido', () =>
+    catalogo.crearCie10({ codigo: 'LOC-01', descripcion: 'Otro', categoria: null })
+  )
+  await debeFallar('no permite modificar un código oficial', () =>
+    catalogo.actualizarCie10('J00', { descripcion: 'Alterado', categoria: null })
+  )
+  await debeFallar('no permite eliminar un código oficial', () => catalogo.eliminarCie10('J00'))
+
+  const idPlantilla = catalogo.guardarPlantilla({
+    codigoCie10: 'J02.9',
+    nombre: 'Faringitis bacteriana — adulto',
+    tratamiento: 'Reposo relativo e hidratación abundante.',
+    recomendaciones: 'Volver si la fiebre persiste 48 horas.',
+    items: [
+      {
+        medicamentoId: null,
+        nombre: 'Amoxicilina',
+        concentracion: '500 mg',
+        forma: 'Cápsula',
+        dosis: '1 cápsula',
+        frecuencia: 'cada 8 horas',
+        duracion: 'por 7 días',
+        via: 'Oral',
+        indicaciones: null
+      }
+    ]
+  })
+  comprobar('guarda un protocolo de tratamiento', idPlantilla > 0)
+  const plantillas = catalogo.plantillasPorCie10('J02.9')
+  comprobar('el protocolo se ofrece para su diagnóstico', plantillas.length === 1)
+  comprobar('el protocolo conserva sus medicamentos', plantillas[0].items.length === 1)
+  comprobar(
+    'no se ofrece para un diagnóstico distinto',
+    catalogo.plantillasPorCie10('I10').length === 0
+  )
+
+  catalogo.eliminarPlantilla(idPlantilla)
+  comprobar('elimina el protocolo', catalogo.plantillasPorCie10('J02.9').length === 0)
+
+  await debeFallar('no elimina un diagnóstico en uso', () => catalogo.eliminarCie10('J02.9'))
+  catalogo.eliminarCie10('LOC-01')
+  comprobar('elimina un diagnóstico propio sin uso', catalogo.listarCie10(true).length === 0)
 
   grupo('Actualizaciones y versionado del esquema')
   const migraciones = await import('./db/migraciones')
@@ -816,8 +1019,14 @@ async function ejecutar(): Promise<void> {
   cerrarBaseDatos()
   const BetterSqlite3 = (await import('better-sqlite3')).default
   const retroceder = new BetterSqlite3(rutaBaseDatos())
-  retroceder.exec('DROP TABLE IF EXISTS cita')
-  retroceder.prepare('DELETE FROM migracion WHERE version = 2').run()
+  // Se deshace la última migración tal cual quedaría una base de la versión previa.
+  retroceder.exec(`
+    DROP INDEX IF EXISTS idx_cita_doctor;
+    ALTER TABLE cita DROP COLUMN doctor_id;
+    ALTER TABLE cie10 DROP COLUMN es_personalizado;
+    ALTER TABLE configuracion_clinica DROP COLUMN tamano_receta;
+  `)
+  retroceder.prepare('DELETE FROM migracion WHERE version = 4').run()
   const pacientesAntes = (
     retroceder.prepare('SELECT COUNT(*) AS total FROM paciente').get() as { total: number }
   ).total
@@ -841,7 +1050,11 @@ async function ejecutar(): Promise<void> {
     'las consultas sobreviven a la actualización',
     consultas.historial(idPaciente).length === 5
   )
-  comprobar('la tabla nueva queda disponible', citas.dePaciente(idPaciente).length === 0)
+  comprobar('las citas sobreviven a la actualización', citas.dePaciente(idPaciente).length > 0)
+  comprobar(
+    'la columna nueva queda poblada, sin citas huérfanas',
+    citas.dePaciente(idPaciente).every((c) => c.doctorId !== null)
+  )
 
   cerrarBaseDatos()
 }

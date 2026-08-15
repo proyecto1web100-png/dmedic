@@ -9,6 +9,8 @@ export const ESTADOS_CITA: { valor: EstadoCita; etiqueta: string }[] = [
 
 export interface Cita {
   id: number
+  /** Doctor al que pertenece la cita. Define de quién es la agenda. */
+  doctorId: number | null
   pacienteId: number | null
   nombreProvisional: string | null
   telefonoProvisional: string | null
@@ -30,9 +32,12 @@ export interface CitaConPaciente extends Cita {
   numeroExpediente: string | null
   telefono: string | null
   esPacienteRegistrado: boolean
+  nombreDoctor: string | null
 }
 
 export interface CitaInput {
+  /** Solo la secretaría puede elegirlo; un doctor siempre se lo asigna a sí mismo. */
+  doctorId?: number | null
   pacienteId?: number | null
   nombreProvisional?: string | null
   telefonoProvisional?: string | null
@@ -55,4 +60,29 @@ export interface SolapamientoCita {
 export interface ResumenAgenda {
   hoy: CitaConPaciente[]
   proximas: CitaConPaciente[]
+}
+
+export type PeriodoReporte = 'dia' | 'semana' | 'mes'
+
+export interface FiltroAgenda {
+  desde: string
+  hasta: string
+  /** Nulo = todos los doctores. Un doctor solo puede pedir la suya. */
+  doctorId?: number | null
+  incluirCanceladas?: boolean
+}
+
+export interface ReporteCitas {
+  periodo: PeriodoReporte
+  desde: string
+  hasta: string
+  doctorId: number | null
+  nombreDoctor: string | null
+  citas: CitaConPaciente[]
+  totales: {
+    agendadas: number
+    atendidas: number
+    noAsistio: number
+    canceladas: number
+  }
 }

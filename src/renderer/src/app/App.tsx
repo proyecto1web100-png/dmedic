@@ -6,6 +6,7 @@ import { Cargando } from '../components/ui/Varios'
 import { PantallaAcceso } from '../features/auth/PantallaAcceso'
 import { CambioObligatorio } from '../features/auth/CambioObligatorio'
 import { Usuarios } from '../features/usuarios/Usuarios'
+import { Catalogo } from '../features/catalogo/Catalogo'
 import type { Permiso } from '@shared/types'
 import { Dashboard } from '../features/dashboard/Dashboard'
 import { ListaPacientes } from '../features/pacientes/ListaPacientes'
@@ -69,6 +70,14 @@ function Enrutador(): React.JSX.Element {
           element={
             <Protegida permiso="citas.ver">
               <Agenda />
+            </Protegida>
+          }
+        />
+        <Route
+          path="catalogo"
+          element={
+            <Protegida permiso="catalogo.gestionar">
+              <Catalogo />
             </Protegida>
           }
         />

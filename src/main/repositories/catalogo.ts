@@ -35,6 +35,69 @@ export function obtenerCie10(codigo: string): Cie10 | null {
   return fila ?? null
 }
 
+export function listarCie10(soloPersonalizados = false): Cie10[] {
+  return db()
+    .prepare(
+      `SELECT codigo, descripcion, categoria FROM cie10
+        ${soloPersonalizados ? 'WHERE es_personalizado = 1' : ''}
+        ORDER BY codigo`
+    )
+    .all() as Cie10[]
+}
+
+/**
+ * Diagnostico propio de la clinica. Se marca como personalizado para que la
+ * siembra de catalogos nunca lo pise y se pueda distinguir del CIE-10 oficial.
+ */
+export function crearCie10(datos: Cie10): string {
+  const codigo = datos.codigo.trim().toUpperCase()
+  if (codigo.length < 2) throw new Error('El código debe tener al menos 2 caracteres')
+  if (datos.descripcion.trim().length < 3) {
+    throw new Error('La descripción debe tener al menos 3 caracteres')
+  }
+  if (obtenerCie10(codigo)) throw new Error(`Ya existe un diagnóstico con el código ${codigo}`)
+
+  db()
+    .prepare(
+      `INSERT INTO cie10 (codigo, descripcion, categoria, es_personalizado)
+       VALUES (?, ?, ?, 1)`
+    )
+    .run(codigo, datos.descripcion.trim(), datos.categoria?.trim() || 'Personalizado')
+  return codigo
+}
+
+export function actualizarCie10(codigo: string, datos: Omit<Cie10, 'codigo'>): void {
+  const fila = db()
+    .prepare('SELECT es_personalizado FROM cie10 WHERE codigo = ?')
+    .get(codigo) as { es_personalizado: number } | undefined
+  if (!fila) throw new Error('El diagnóstico no existe')
+  if (fila.es_personalizado !== 1) {
+    throw new Error('Los códigos del catálogo CIE-10 oficial no se pueden modificar')
+  }
+
+  db()
+    .prepare('UPDATE cie10 SET descripcion = ?, categoria = ? WHERE codigo = ?')
+    .run(datos.descripcion.trim(), datos.categoria?.trim() || 'Personalizado', codigo)
+}
+
+export function eliminarCie10(codigo: string): void {
+  const enUso = db()
+    .prepare('SELECT COUNT(*) AS total FROM consulta_diagnostico WHERE codigo_cie10 = ?')
+    .get(codigo) as { total: number }
+  if (enUso.total > 0) {
+    throw new Error(
+      `No se puede eliminar: hay ${enUso.total} ${enUso.total === 1 ? 'consulta que lo usa' : 'consultas que lo usan'}.`
+    )
+  }
+  const fila = db()
+    .prepare('SELECT es_personalizado FROM cie10 WHERE codigo = ?')
+    .get(codigo) as { es_personalizado: number } | undefined
+  if (fila?.es_personalizado !== 1) {
+    throw new Error('Solo se pueden eliminar los diagnósticos creados en la clínica')
+  }
+  db().prepare('DELETE FROM cie10 WHERE codigo = ?').run(codigo)
+}
+
 // ===== Medicamentos =====
 
 interface FilaMedicamento {

@@ -28,6 +28,8 @@ export type Permiso =
   | 'documentos.generar'
   | 'citas.ver'
   | 'citas.gestionar'
+  | 'citas.gestionar_todas'
+  | 'citas.reportes'
   | 'catalogo.gestionar'
   | 'usuarios.gestionar'
   | 'backups.crear'
@@ -35,8 +37,8 @@ export type Permiso =
   | 'configuracion.clinica'
 
 /**
- * Un doctor accede a todo lo clinico pero NO administra la agenda: crear y
- * mover citas es competencia exclusiva de la secretaria.
+ * El doctor gestiona SU propia agenda; la secretaria gestiona la de todos y es
+ * la unica que puede asignar una cita a otro doctor.
  */
 const PERMISOS_DOCTOR: Permiso[] = [
   'pacientes.ver',
@@ -51,6 +53,8 @@ const PERMISOS_DOCTOR: Permiso[] = [
   'consultas.anular',
   'documentos.generar',
   'citas.ver',
+  'citas.gestionar',
+  'citas.reportes',
   'catalogo.gestionar',
   'backups.crear'
 ]
@@ -65,7 +69,9 @@ const PERMISOS_SECRETARIA: Permiso[] = [
   'pacientes.registrar',
   'pacientes.editar_contacto',
   'citas.ver',
-  'citas.gestionar'
+  'citas.gestionar',
+  'citas.gestionar_todas',
+  'citas.reportes'
 ]
 
 /** Se suman al rol base; hoy solo el Doctor 1 los tiene. */
