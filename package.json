@@ -1,6 +1,6 @@
 {
   "name": "dmedic",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Sistema de gestion clinica DMedic",
   "main": "./out/main/index.js",
   "author": "DMedic",
