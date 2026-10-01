@@ -20,6 +20,11 @@ app.setPath('userData', carpetaTemporal)
 const CLAVE_PRUEBAS = 'HKCU\\Software\\DMedicPruebas'
 process.env.DMEDIC_CLAVE_REGISTRO = CLAVE_PRUEBAS
 
+// Fuera de Windows la copia de respaldo es un archivo en lugar del registro.
+const ES_WINDOWS = process.platform === 'win32'
+const COPIA_PRUEBAS = join(carpetaTemporal, 'copia-respaldo')
+process.env.DMEDIC_COPIA_RESPALDO = COPIA_PRUEBAS
+
 app.on('window-all-closed', () => {})
 
 let pasadas = 0
@@ -52,6 +57,10 @@ const RUTA_ESTADO = join(carpetaTemporal, 'licencia.json')
 const HORA = 60 * 60 * 1000
 
 function borrarRegistro(): void {
+  if (!ES_WINDOWS) {
+    if (existsSync(COPIA_PRUEBAS)) unlinkSync(COPIA_PRUEBAS)
+    return
+  }
   try {
     // Con la clave ya ausente, "reg delete" escribe en stderr; se silencia todo
     // porque no encontrarla es exactamente el resultado que se busca.
@@ -95,6 +104,10 @@ function sembrarEstado(parcial: Partial<Guardado>): void {
   }
   writeFileSync(RUTA_ESTADO, JSON.stringify(estado, null, 2), 'utf8')
   const valor = Buffer.from(JSON.stringify(estado), 'utf8').toString('base64')
+  if (!ES_WINDOWS) {
+    writeFileSync(COPIA_PRUEBAS, valor, 'utf8')
+    return
+  }
   execFileSync(
     'reg',
     ['add', CLAVE_PRUEBAS, '/v', 'Instalacion', '/t', 'REG_SZ', '/d', valor, '/f'],
