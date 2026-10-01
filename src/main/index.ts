@@ -135,6 +135,9 @@ app.on('before-quit', async (evento) => {
   }
 })
 
+// En Mac tambien se cierra del todo, como en Windows: si quedara abierto en el
+// Dock, cualquiera podria volver a la ventana con la sesion iniciada, y el
+// backup de cierre nunca se haria.
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit()
+  app.quit()
 })

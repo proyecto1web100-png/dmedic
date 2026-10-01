@@ -1,0 +1,55 @@
+# Compila la version para Mac en un Mac de GitHub. El instalador de Windows se
+# sigue generando como siempre (npm run publicar) y no depende de esto.
+#
+# - Al publicar un release (npm run publicar), agrega los .dmg a ese mismo release.
+# - "Run workflow" a mano: compila y deja los .dmg como artefacto descargable.
+name: Version para Mac
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || github.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      # El runner es Apple Silicon: npm solo instala el binario de Argon2 para
+      # arm64. Sin el de Intel, la app no podria iniciar sesion en Macs Intel.
+      - name: Binario de Argon2 para Mac Intel
+        run: |
+          VERSION=$(node -p "require('@node-rs/argon2/package.json').version")
+          npm install --no-save --force "@node-rs/argon2-darwin-x64@$VERSION"
+
+      - run: npm run verificar
+
+      - name: Compilar y agregar al release
+        if: github.event_name == 'release'
+        run: npm run publicar:mac
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compilar
+        if: github.event_name != 'release'
+        run: npm run dist:mac
+
+      - name: Guardar instaladores
+        if: github.event_name != 'release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: DMedic-Mac
+          path: dist/*.dmg

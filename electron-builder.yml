@@ -29,6 +29,17 @@ win:
   # la version final con icono propio.
   signAndEditExecutable: false
 
+# Version para Mac: se compila aparte (en un Mac o con GitHub Actions) y no
+# afecta al instalador de Windows. Sin firma de Apple (identity: null), el
+# cliente debe ejecutar una vez: xattr -cr /Applications/DMedic.app
+mac:
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+  artifactName: ${productName}-Mac-${version}-${arch}.${ext}
+  category: public.app-category.medical
+  identity: null
+
 nsis:
   oneClick: false
   perMachine: false
@@ -37,7 +48,7 @@ nsis:
   createStartMenuShortcut: true
   shortcutName: DMedic
   # Desinstalar nunca debe borrar expedientes: los datos viven en %APPDATA%\DMedic
-  # y se conservan deliberadamente.
+  # (en Mac, ~/Library/Application Support/DMedic) y se conservan deliberadamente.
   deleteAppDataOnUninstall: false
 
 # Las actualizaciones se publican como GitHub Releases. El programa solo descarga
