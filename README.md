@@ -32,7 +32,17 @@ El instalador de Windows no cambia y sus clientes no notan nada.
   `.github/workflows/mac.yml`, que compila en un Mac de GitHub y agrega los `.dmg`
   a ese mismo release. También se puede lanzar a mano desde *Actions → Version para
   Mac → Run workflow* y descargar los `.dmg` como artefacto.
-- **En un Mac:** `npm run dist:mac` (o `npm run publicar:mac`).
+- **En un Mac:** `npm run dist:mac` (o `npm run publicar:mac`), con
+  `publicador/semilla.txt` presente.
+
+El flujo necesita el secreto **`DMEDIC_SEMILLA`** (Settings → Secrets and
+variables → Actions) con el contenido exacto de `publicador/semilla.txt`: sin él
+se detiene, en vez de compilar un `.dmg` cuyos códigos de activación no
+funcionarían.
+
+En Mac el ID del equipo sale del `IOPlatformUUID` del hardware, y la copia de
+respaldo de la licencia (el registro, en Windows) es el archivo
+`~/Library/Preferences/hn.dmedic.gestion.instalacion`.
 
 La app no está firmada por Apple. La primera vez, el cliente la arrastra a
 Aplicaciones y ejecuta en Terminal:

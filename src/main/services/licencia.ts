@@ -1,8 +1,8 @@
 import { createHmac, createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
-import { hostname, userInfo } from 'node:os'
-import { join } from 'node:path'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { homedir, hostname, userInfo } from 'node:os'
+import { dirname, join } from 'node:path'
 import { directorioDatos } from '../db/rutas'
 import type { EstadoLicencia } from '@shared/types'
 
@@ -48,6 +48,16 @@ const INTERVALO_MARCA_MS = 5 * 60 * 1000
 const CLAVE_REGISTRO = process.env.DMEDIC_CLAVE_REGISTRO || 'HKCU\\Software\\DMedic'
 const VALOR_REGISTRO = 'Instalacion'
 
+/**
+ * Mac no tiene registro: la copia vive en un archivo de Preferencias, fuera de
+ * la carpeta de datos, para que borrar esta tampoco reinicie la prueba. El
+ * banco de pruebas lo redirige con DMEDIC_COPIA_RESPALDO.
+ */
+const ES_WINDOWS = process.platform === 'win32'
+const RUTA_COPIA_RESPALDO =
+  process.env.DMEDIC_COPIA_RESPALDO ||
+  join(homedir(), 'Library', 'Preferences', 'hn.dmedic.gestion.instalacion')
+
 interface EstadoGuardado {
   /** Primer arranque de la aplicacion en este equipo. */
   inicio: string
@@ -83,6 +93,10 @@ export function olvidarEstadoEnMemoria(): void {
  * codigo de activacion a una computadora concreta.
  */
 function huellaDelEquipo(): string {
+  return (ES_WINDOWS ? huellaWindows() : huellaMac()) ?? huellaDebil()
+}
+
+function huellaWindows(): string | null {
   try {
     const salida = execFileSync(
       'reg',
@@ -92,9 +106,36 @@ function huellaDelEquipo(): string {
     const guid = salida.match(/MachineGuid\s+REG_SZ\s+(\S+)/i)
     if (guid) return guid[1].toLowerCase()
   } catch {
-    // Sin registro disponible se usa un dato mas debil, pero estable en la
-    // practica: la aplicacion nunca debe quedar sin forma de activarse.
+    // Se recurre a la huella debil.
   }
+  return null
+}
+
+/**
+ * En Mac el equivalente es el UUID de la placa. El nombre del equipo no sirve:
+ * macOS lo cambia solo (MacBook-Pro pasa a MacBook-Pro-2) y la activacion se
+ * perderia.
+ */
+function huellaMac(): string | null {
+  try {
+    const salida = execFileSync('/usr/sbin/ioreg', ['-rd1', '-c', 'IOPlatformExpertDevice'], {
+      encoding: 'utf8',
+      timeout: 5000,
+      stdio: ['ignore', 'pipe', 'ignore']
+    })
+    const uuid = salida.match(/"IOPlatformUUID"\s*=\s*"([^"]+)"/)
+    if (uuid) return uuid[1].toLowerCase()
+  } catch {
+    // Se recurre a la huella debil.
+  }
+  return null
+}
+
+/**
+ * Sin identificador del sistema se usa un dato mas debil, pero estable en la
+ * practica: la aplicacion nunca debe quedar sin forma de activarse.
+ */
+function huellaDebil(): string {
   return `${hostname()}::${userInfo().username}`.toLowerCase()
 }
 
@@ -158,6 +199,7 @@ function leerArchivo(): Partial<EstadoGuardado> | null {
  * equipo que ya se activo.
  */
 function leerRegistro(): Partial<EstadoGuardado> | null {
+  if (!ES_WINDOWS) return leerCopiaArchivo()
   try {
     const salida = execFileSync(
       'reg',
@@ -175,6 +217,7 @@ function leerRegistro(): Partial<EstadoGuardado> | null {
 }
 
 function escribirRegistro(estado: EstadoGuardado): void {
+  if (!ES_WINDOWS) return escribirCopiaArchivo(estado)
   try {
     const valor = Buffer.from(JSON.stringify(estado), 'utf8').toString('base64')
     execFileSync('reg', ['add', CLAVE_REGISTRO, '/v', VALOR_REGISTRO, '/t', 'REG_SZ', '/d', valor, '/f'], {
@@ -186,6 +229,29 @@ function escribirRegistro(estado: EstadoGuardado): void {
   } catch {
     // El archivo sigue siendo la fuente principal: no poder escribir en el
     // registro no puede impedir que la aplicacion funcione.
+  }
+}
+
+function leerCopiaArchivo(): Partial<EstadoGuardado> | null {
+  try {
+    if (!existsSync(RUTA_COPIA_RESPALDO)) return null
+    const valor = readFileSync(RUTA_COPIA_RESPALDO, 'utf8').trim()
+    return JSON.parse(Buffer.from(valor, 'base64').toString('utf8')) as Partial<EstadoGuardado>
+  } catch {
+    return null
+  }
+}
+
+function escribirCopiaArchivo(estado: EstadoGuardado): void {
+  try {
+    mkdirSync(dirname(RUTA_COPIA_RESPALDO), { recursive: true })
+    writeFileSync(
+      RUTA_COPIA_RESPALDO,
+      Buffer.from(JSON.stringify(estado), 'utf8').toString('base64'),
+      'utf8'
+    )
+  } catch {
+    // Igual que con el registro: la copia nunca impide que la aplicacion funcione.
   }
 }
 

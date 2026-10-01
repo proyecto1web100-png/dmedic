@@ -28,6 +28,19 @@ jobs:
 
       - run: npm ci
 
+      # La semilla de los codigos de activacion no esta en el repositorio (es
+      # publico): viene del secreto DMEDIC_SEMILLA. Sin ella electron-vite usaria
+      # la semilla de desarrollo y ningun codigo entregado funcionaria en el .dmg.
+      - name: Semilla de activacion
+        env:
+          SEMILLA: ${{ secrets.DMEDIC_SEMILLA }}
+        run: |
+          if [ -z "$SEMILLA" ]; then
+            echo "::error::Falta el secreto DMEDIC_SEMILLA (Settings > Secrets and variables > Actions)."
+            exit 1
+          fi
+          printf '%s' "$SEMILLA" > publicador/semilla.txt
+
       # El runner es Apple Silicon: npm solo instala el binario de Argon2 para
       # arm64. Sin el de Intel, la app no podria iniciar sesion en Macs Intel.
       - name: Binario de Argon2 para Mac Intel
@@ -36,6 +49,7 @@ jobs:
           npm install --no-save --force "@node-rs/argon2-darwin-x64@$VERSION"
 
       - run: npm run verificar
+      - run: npm run verificar:licencia
 
       - name: Compilar y agregar al release
         if: github.event_name == 'release'
