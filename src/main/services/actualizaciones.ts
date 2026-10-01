@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, shell } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import type { EstadoActualizacion } from '@shared/types'
 
@@ -94,9 +94,19 @@ export async function buscar(): Promise<EstadoActualizacion> {
   return estado
 }
 
+/**
+ * En Mac, macOS solo deja instalar una actualizacion automatica si la app esta
+ * firmada por Apple. Sin firma se abre la pagina de descarga para instalarla a mano.
+ */
+const PAGINA_DE_DESCARGAS = 'https://github.com/proyecto1web100-png/dmedic/releases/latest'
+
 export async function descargar(): Promise<void> {
   if (!app.isPackaged) throw new Error('Las actualizaciones solo funcionan en la versión instalada')
   if (estado.fase !== 'disponible') throw new Error('No hay ninguna actualización disponible')
+  if (process.platform === 'darwin') {
+    await shell.openExternal(PAGINA_DE_DESCARGAS)
+    return
+  }
   emitir({ fase: 'descargando', porcentaje: 0 })
   await autoUpdater.downloadUpdate()
 }
