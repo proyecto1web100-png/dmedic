@@ -59,6 +59,20 @@ export const medicamentoRecetadoSchema = z.object({
   indicaciones: textoOpcional(300)
 })
 
+export const procedimientoSchema = z.object({
+  id: z.number().optional(),
+  examenId: z
+    .number()
+    .int()
+    .positive()
+    .nullish()
+    .transform((v) => v ?? null),
+  nombre: z.string().trim().min(2, 'Nombre del examen requerido').max(160),
+  categoria: z.enum(['laboratorio', 'imagen', 'procedimiento', 'otro']),
+  indicaciones: textoOpcional(300),
+  urgente: z.boolean().default(false)
+})
+
 export const consultaInputSchema = z
   .object({
     pacienteId: z.number().int().positive(),
@@ -82,7 +96,8 @@ export const consultaInputSchema = z
     sinProximaCita: z.boolean(),
     signos: signosVitalesSchema,
     diagnosticos: z.array(diagnosticoSchema).default([]),
-    medicamentos: z.array(medicamentoRecetadoSchema).default([])
+    medicamentos: z.array(medicamentoRecetadoSchema).default([]),
+    procedimientos: z.array(procedimientoSchema).default([])
   })
   .refine((d) => d.sinProximaCita || d.proximaCitaFecha !== null, {
     message: 'Indique la fecha de la próxima cita o marque "sin próxima cita"',

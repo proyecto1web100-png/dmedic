@@ -8,19 +8,31 @@ import { api, mensajeDeError, pedir } from '../../lib/api'
 import { useNotificar } from '../../app/Notificaciones'
 import { BuscadorCie10 } from '../consultas/BuscadorCie10'
 import { EditorMedicamentos } from '../consultas/EditorMedicamentos'
-import type { Cie10, MedicamentoRecetado, PlantillaTratamiento } from '@shared/types'
+import { EditorProcedimientos } from '../consultas/EditorProcedimientos'
+import { PanelExamenes } from './PanelExamenes'
+import { PanelInventario } from './PanelInventario'
+import { PanelEmpresas } from './PanelEmpresas'
+import { useSesion } from '../../app/Sesion'
+import type {
+  Cie10,
+  MedicamentoRecetado,
+  PlantillaExamen,
+  PlantillaTratamiento
+} from '@shared/types'
 
-type Pestana = 'diagnosticos' | 'tratamientos'
+type Pestana = 'diagnosticos' | 'tratamientos' | 'examenes' | 'inventario' | 'empresas'
 
 export function Catalogo(): React.JSX.Element {
   const [pestana, setPestana] = useState<Pestana>('tratamientos')
+  const { puede } = useSesion()
 
   return (
     <div className="mx-auto flex min-h-full w-full max-w-5xl flex-col gap-5 px-8 py-8">
       <header>
         <h1 className="text-xl font-bold tracking-tight text-[var(--tinta)]">Catálogo clínico</h1>
         <p className="text-[0.875rem] text-[var(--tinta-suave)]">
-          Sus diagnósticos propios y sus protocolos de tratamiento.
+          Sus diagnósticos propios, sus protocolos, los exámenes que indica, las existencias de
+          medicamentos y las empresas con convenio.
         </p>
       </header>
 
@@ -28,7 +40,10 @@ export function Catalogo(): React.JSX.Element {
         {(
           [
             ['tratamientos', 'Protocolos de tratamiento'],
-            ['diagnosticos', 'Diagnósticos propios']
+            ['examenes', 'Exámenes y procedimientos'],
+            ['diagnosticos', 'Diagnósticos propios'],
+            ...(puede('inventario.ver') ? ([['inventario', 'Inventario']] as [Pestana, string][]) : []),
+            ...(puede('empresas.gestionar') ? ([['empresas', 'Empresas']] as [Pestana, string][]) : [])
           ] as [Pestana, string][]
         ).map(([valor, etiqueta]) => (
           <button
@@ -45,7 +60,11 @@ export function Catalogo(): React.JSX.Element {
         ))}
       </div>
 
-      {pestana === 'tratamientos' ? <PanelPlantillas /> : <PanelDiagnosticos />}
+      {pestana === 'tratamientos' && <PanelPlantillas />}
+      {pestana === 'examenes' && <PanelExamenes />}
+      {pestana === 'diagnosticos' && <PanelDiagnosticos />}
+      {pestana === 'inventario' && <PanelInventario />}
+      {pestana === 'empresas' && <PanelEmpresas />}
     </div>
   )
 }
@@ -129,6 +148,12 @@ function PanelPlantillas(): React.JSX.Element {
                         {p.items.length === 1 ? 'medicamento' : 'medicamentos'}
                       </Insignia>
                     )}
+                    {p.examenes.length > 0 && (
+                      <Insignia>
+                        {p.examenes.length}{' '}
+                        {p.examenes.length === 1 ? 'examen' : 'exámenes'}
+                      </Insignia>
+                    )}
                   </div>
                   {p.tratamiento && (
                     <p className="mt-0.5 line-clamp-2 text-[0.8125rem] text-[var(--tinta-suave)]">
@@ -201,6 +226,7 @@ function EditorPlantilla({
       indicaciones: i.indicaciones
     }))
   )
+  const [examenes, setExamenes] = useState<PlantillaExamen[]>(plantilla?.examenes ?? [])
   const [error, setError] = useState<string | null>(null)
   const [guardando, setGuardando] = useState(false)
 
@@ -229,6 +255,13 @@ function EditorPlantilla({
             frecuencia: m.frecuencia,
             duracion: m.duracion,
             indicaciones: m.indicaciones
+          })),
+          examenes: examenes.map((e) => ({
+            examenId: e.examenId,
+            nombre: e.nombre,
+            categoria: e.categoria,
+            indicaciones: e.indicaciones,
+            urgente: e.urgente
           }))
         })
       )
@@ -314,6 +347,11 @@ function EditorPlantilla({
             alergias={[]}
             onCambiar={setMedicamentos}
           />
+        </div>
+
+        <div>
+          <span className="etiqueta">Exámenes que suele indicar</span>
+          <EditorProcedimientos procedimientos={examenes} onCambiar={setExamenes} />
         </div>
 
         <AreaTexto

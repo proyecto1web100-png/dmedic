@@ -1,12 +1,20 @@
 import { useEffect, useState } from 'react'
+import { Search, X } from 'lucide-react'
 import { Boton } from '../../components/ui/Boton'
 import { AreaTexto, Entrada, Selector } from '../../components/ui/Campo'
 import { Modal } from '../../components/ui/Modal'
 import { Aviso } from '../../components/ui/Varios'
 import { api, mensajeDeError, pedir } from '../../lib/api'
 import { useNotificar } from '../../app/Notificaciones'
-import { calcularEdad } from '@shared/lib/paciente'
-import type { ContactoEmergencia, Paciente, PacienteConResumen, PacienteInput } from '@shared/types'
+import { useBusquedaPacientes } from './useBusquedaPacientes'
+import { calcularEdad, formatearIdentidad } from '@shared/lib/paciente'
+import { FichaSocial, HistoriaInicial } from './FichaSocial'
+import type {
+  ContactoEmergencia,
+  Paciente,
+  PacienteConResumen,
+  PacienteInput
+} from '@shared/types'
 
 const TIPOS_SANGRE = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map((v) => ({
   valor: v,
@@ -33,7 +41,16 @@ function estadoInicial(): PacienteInput {
     notas: '',
     responsableId: null,
     responsableParentesco: '',
-    contactos: []
+    nivelEducativo: null,
+    ocupacion: '',
+    estadoCivil: null,
+    historiador: '',
+    historiadorParentesco: '',
+    empresaId: null,
+    codigoEmpleado: '',
+    contactos: [],
+    alergiasIniciales: [],
+    antecedentesIniciales: []
   }
 }
 
@@ -80,7 +97,18 @@ export function FormularioPaciente({
         notas: paciente.notas ?? '',
         responsableId: paciente.responsableId,
         responsableParentesco: paciente.responsableParentesco ?? '',
-        contactos: paciente.contactos ?? []
+        nivelEducativo: paciente.nivelEducativo,
+        ocupacion: paciente.ocupacion ?? '',
+        estadoCivil: paciente.estadoCivil,
+        historiador: paciente.historiador ?? '',
+        historiadorParentesco: paciente.historiadorParentesco ?? '',
+        empresaId: paciente.empresaId,
+        codigoEmpleado: paciente.codigoEmpleado ?? '',
+        contactos: paciente.contactos ?? [],
+        // La historia solo se recoge al dar de alta: después se administra
+        // desde el expediente, que es donde queda fechado cada cambio.
+        alergiasIniciales: [],
+        antecedentesIniciales: []
       })
     } else {
       setDatos(estadoInicial())
@@ -156,6 +184,7 @@ export function FormularioPaciente({
   }
 
   const edad = datos.fechaNacimiento ? calcularEdad(datos.fechaNacimiento) : null
+  const esMenor = edad !== null && edad < 18
   const contactos = datos.contactos ?? []
 
   return (
@@ -261,6 +290,23 @@ export function FormularioPaciente({
           />
         </div>
 
+        {/* Un menor sin identidad queda identificado a traves del adulto que
+            responde por el. Solo se ofrece cuando hace falta, para no estorbar
+            el alta de un adulto que trae su tarjeta. */}
+        {(esMenor || !(datos.numeroIdentidad ?? '').trim() || datos.responsableId !== null) && (
+          <SelectorResponsable
+            responsableId={datos.responsableId ?? null}
+            parentesco={datos.responsableParentesco ?? ''}
+            excluirId={paciente?.id}
+            esMenor={esMenor}
+            sinIdentidad={!(datos.numeroIdentidad ?? '').trim()}
+            onElegir={(elegido) => {
+              actualizar('responsableId', elegido?.id ?? null)
+            }}
+            onParentesco={(valor) => actualizar('responsableParentesco', valor)}
+          />
+        )}
+
         <div className="grid grid-cols-2 gap-3">
           <Entrada
             etiqueta="Correo electrónico"
@@ -286,6 +332,12 @@ export function FormularioPaciente({
           value={datos.referidoPor ?? ''}
           onChange={(e) => actualizar('referidoPor', e.target.value)}
         />
+
+        <FichaSocial datos={datos} actualizar={actualizar} />
+
+        {!editando && (
+          <HistoriaInicial datos={datos} actualizar={actualizar} />
+        )}
 
         <div>
           <div className="mb-2 flex items-center justify-between">
@@ -350,5 +402,155 @@ export function FormularioPaciente({
         />
       </div>
     </Modal>
+  )
+}
+
+/**
+ * Vincula a un menor con el adulto que responde por el. El responsable es otro
+ * paciente registrado, no un texto suelto: asi el expediente del nino apunta a
+ * una identidad real y verificable, que es justo lo que le falta a el.
+ */
+function SelectorResponsable({
+  responsableId,
+  parentesco,
+  excluirId,
+  esMenor,
+  sinIdentidad,
+  onElegir,
+  onParentesco
+}: {
+  responsableId: number | null
+  parentesco: string
+  /** El propio paciente que se edita: nadie puede ser su propio responsable. */
+  excluirId?: number
+  esMenor: boolean
+  sinIdentidad: boolean
+  onElegir: (elegido: PacienteConResumen | null) => void
+  onParentesco: (valor: string) => void
+}): React.JSX.Element {
+  const { texto, setTexto, resultados } = useBusquedaPacientes()
+  const [abierto, setAbierto] = useState(false)
+  const [elegido, setElegido] = useState<PacienteConResumen | null>(null)
+
+  // Al editar un paciente ya vinculado hay que recuperar de quien se trata:
+  // el formulario solo guarda el identificador.
+  useEffect(() => {
+    if (responsableId === null) {
+      setElegido(null)
+      return
+    }
+    if (elegido?.id === responsableId) return
+    let vigente = true
+    void (async () => {
+      try {
+        const ficha = await pedir(api.pacientes.ficha(responsableId))
+        if (vigente) setElegido(ficha.paciente)
+      } catch {
+        // Si el responsable ya no existe, el vinculo simplemente no se muestra.
+        if (vigente) setElegido(null)
+      }
+    })()
+    return () => {
+      vigente = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [responsableId])
+
+  const candidatos = resultados.filter((p) => p.id !== excluirId)
+
+  return (
+    <div className="rounded-lg border border-dashed border-[var(--borde)] px-3 py-3">
+      <span className="etiqueta">
+        Responsable
+        {esMenor && sinIdentidad && <span className="ml-0.5 text-red-500">*</span>}
+      </span>
+
+      {elegido ? (
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center gap-2 rounded-lg border border-[var(--borde)] px-3 py-2">
+            <div className="min-w-0 flex-1">
+              <p className="truncate font-medium text-[var(--tinta)]">{elegido.nombreCompleto}</p>
+              <p className="truncate text-[0.8125rem] text-[var(--tinta-tenue)]">
+                {elegido.numeroExpediente}
+                {elegido.numeroIdentidad
+                  ? ` · ${formatearIdentidad(elegido.numeroIdentidad)}`
+                  : ' · sin identidad registrada'}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setElegido(null)
+                onElegir(null)
+                setTexto('')
+              }}
+              aria-label="Quitar responsable"
+              className="shrink-0 rounded p-0.5 text-[var(--tinta-tenue)] transition-colors hover:text-red-600"
+            >
+              <X size={15} />
+            </button>
+          </div>
+
+          {!elegido.numeroIdentidad && (
+            <Aviso tono="alerta">
+              El responsable elegido tampoco tiene número de identidad registrado. El vínculo se
+              guarda igual, pero conviene completar su identidad para que el menor quede
+              identificado.
+            </Aviso>
+          )}
+
+          <Entrada
+            etiqueta="Parentesco"
+            value={parentesco}
+            onChange={(e) => onParentesco(e.target.value)}
+            placeholder="Madre, Padre, Abuela, Tutor…"
+          />
+        </div>
+      ) : (
+        <div className="relative">
+          <Search
+            size={15}
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--tinta-tenue)]"
+          />
+          <input
+            value={texto}
+            onChange={(e) => {
+              setTexto(e.target.value)
+              setAbierto(true)
+            }}
+            onFocus={() => setAbierto(true)}
+            onBlur={() => window.setTimeout(() => setAbierto(false), 150)}
+            placeholder="Buscar al adulto por nombre, identidad o expediente…"
+            className="campo-base pl-9"
+          />
+          {abierto && candidatos.length > 0 && (
+            <ul className="desplazable superficie absolute z-30 mt-1 max-h-56 w-full overflow-y-auto py-1">
+              {candidatos.map((p) => (
+                <li key={p.id}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setElegido(p)
+                      onElegir(p)
+                      setAbierto(false)
+                    }}
+                    className="flex w-full items-baseline gap-2 px-3 py-1.5 text-left hover:bg-marca-50 oscuro:hover:bg-marca-900/60"
+                  >
+                    <span className="font-medium text-[var(--tinta)]">{p.nombreCompleto}</span>
+                    <span className="text-[0.8125rem] text-[var(--tinta-tenue)]">
+                      {p.numeroExpediente}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="mt-1 text-[0.78125rem] text-[var(--tinta-tenue)]">
+            El responsable debe estar registrado como paciente. Si todavía no lo está, regístrelo
+            primero y vuelva aquí.
+          </p>
+        </div>
+      )}
+    </div>
   )
 }

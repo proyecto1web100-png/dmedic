@@ -10,6 +10,7 @@ import type {
   DiagnosticoConsulta,
   FiltroHistorial,
   MedicamentoRecetado,
+  ProcedimientoConsulta,
   SignosVitales
 } from '@shared/types'
 
@@ -143,6 +144,30 @@ function guardarReceta(consultaId: number, medicamentos: MedicamentoRecetado[], 
   })
 }
 
+/**
+ * Los examenes indicados se copian dentro de la consulta: si manana se edita o
+ * se retira uno del catalogo, lo que se le indico al paciente no cambia.
+ */
+function guardarProcedimientos(consultaId: number, procedimientos: ProcedimientoConsulta[]): void {
+  db().prepare('DELETE FROM consulta_procedimiento WHERE consulta_id = ?').run(consultaId)
+  const insertar = db().prepare(
+    `INSERT INTO consulta_procedimiento (
+       consulta_id, examen_id, nombre, categoria, indicaciones, urgente, orden
+     ) VALUES (?, ?, ?, ?, ?, ?, ?)`
+  )
+  procedimientos.forEach((p, indice) => {
+    insertar.run(
+      consultaId,
+      p.examenId ?? null,
+      p.nombre,
+      p.categoria,
+      p.indicaciones ?? null,
+      p.urgente ? 1 : 0,
+      indice
+    )
+  })
+}
+
 export function crear(input: ConsultaInput, usuarioId: number): number {
   return enTransaccion(() => {
     const ahora = ahoraIso()
@@ -179,6 +204,7 @@ export function crear(input: ConsultaInput, usuarioId: number): number {
     guardarSignos(id, input.signos)
     guardarDiagnosticos(id, input.diagnosticos)
     guardarReceta(id, input.medicamentos, fecha)
+    guardarProcedimientos(id, input.procedimientos ?? [])
     return id
   })
 }
@@ -223,6 +249,7 @@ export function actualizar(id: number, input: ConsultaInput): void {
     guardarSignos(id, input.signos)
     guardarDiagnosticos(id, input.diagnosticos)
     guardarReceta(id, input.medicamentos, actual.fecha)
+    guardarProcedimientos(id, input.procedimientos ?? [])
   })
 }
 
@@ -337,6 +364,29 @@ export function medicamentos(consultaId: number): MedicamentoRecetado[] {
   }))
 }
 
+interface FilaProcedimiento {
+  id: number
+  examen_id: number | null
+  nombre: string
+  categoria: ProcedimientoConsulta['categoria']
+  indicaciones: string | null
+  urgente: number
+}
+
+export function procedimientos(consultaId: number): ProcedimientoConsulta[] {
+  const filas = db()
+    .prepare('SELECT * FROM consulta_procedimiento WHERE consulta_id = ? ORDER BY orden')
+    .all(consultaId) as FilaProcedimiento[]
+  return filas.map((f) => ({
+    id: f.id,
+    examenId: f.examen_id,
+    nombre: f.nombre,
+    categoria: f.categoria,
+    indicaciones: f.indicaciones,
+    urgente: f.urgente === 1
+  }))
+}
+
 interface FilaAdenda {
   id: number
   consulta_id: number
@@ -379,6 +429,7 @@ export function obtenerCompleta(id: number): ConsultaCompleta | null {
     signos: signos(id),
     diagnosticos: diagnosticos(id),
     medicamentos: medicamentos(id),
+    procedimientos: procedimientos(id),
     adendas: adendas(id),
     editable: esEditable(consulta),
     nombreDoctor: nombreDelDoctor(consulta.usuarioId)
@@ -402,6 +453,7 @@ interface FilaResumen {
   estado: 'activa' | 'anulada'
   diagnostico_principal: string | null
   total_medicamentos: number
+  total_procedimientos: number
 }
 
 export function historial(pacienteId: number, filtro: FiltroHistorial = {}): ConsultaResumen[] {
@@ -429,6 +481,8 @@ export function historial(pacienteId: number, filtro: FiltroHistorial = {}): Con
       OR c.recomendaciones LIKE @texto
       OR EXISTS (SELECT 1 FROM consulta_diagnostico d
                   WHERE d.consulta_id = c.id AND d.descripcion LIKE @texto)
+      OR EXISTS (SELECT 1 FROM consulta_procedimiento cp
+                  WHERE cp.consulta_id = c.id AND cp.nombre LIKE @texto)
     )`)
     parametros.texto = `%${filtro.texto.trim()}%`
   }
@@ -441,7 +495,9 @@ export function historial(pacienteId: number, filtro: FiltroHistorial = {}): Con
                 ORDER BY d.es_principal DESC, d.id LIMIT 1) AS diagnostico_principal,
               (SELECT COUNT(*) FROM receta_item ri
                  JOIN receta r ON r.id = ri.receta_id
-                WHERE r.consulta_id = c.id) AS total_medicamentos
+                WHERE r.consulta_id = c.id) AS total_medicamentos,
+              (SELECT COUNT(*) FROM consulta_procedimiento cp
+                WHERE cp.consulta_id = c.id) AS total_procedimientos
          FROM consulta c
         WHERE ${condiciones.join(' AND ')}
         ORDER BY c.fecha DESC, c.id DESC`
@@ -454,7 +510,8 @@ export function historial(pacienteId: number, filtro: FiltroHistorial = {}): Con
     motivo: f.motivo,
     estado: f.estado,
     diagnosticoPrincipal: f.diagnostico_principal,
-    totalMedicamentos: f.total_medicamentos
+    totalMedicamentos: f.total_medicamentos,
+    totalProcedimientos: f.total_procedimientos
   }))
 }
 

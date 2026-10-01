@@ -1,3 +1,5 @@
+import type { CategoriaExamen } from './catalogo'
+
 export type EstadoConsulta = 'activa' | 'anulada'
 
 export interface SignosVitales {
@@ -34,6 +36,20 @@ export interface MedicamentoRecetado {
   indicaciones: string | null
 }
 
+/**
+ * Examen o procedimiento indicado en la consulta: un análisis de laboratorio,
+ * un estudio de imagen o cualquier otro estudio que el paciente debe realizarse.
+ */
+export interface ProcedimientoConsulta {
+  id?: number
+  examenId: number | null
+  nombre: string
+  categoria: CategoriaExamen
+  /** Preparación o motivo: «en ayunas de 8 horas», «control post-tratamiento». */
+  indicaciones: string | null
+  urgente: boolean
+}
+
 export interface Consulta {
   id: number
   pacienteId: number
@@ -58,6 +74,7 @@ export interface ConsultaCompleta extends Consulta {
   signos: SignosVitales
   diagnosticos: DiagnosticoConsulta[]
   medicamentos: MedicamentoRecetado[]
+  procedimientos: ProcedimientoConsulta[]
   adendas: Adenda[]
   editable: boolean
   /** Nombre del doctor que la atendió, para mostrarla y firmar sus documentos. */
@@ -78,6 +95,7 @@ export interface ConsultaResumen {
   estado: EstadoConsulta
   diagnosticoPrincipal: string | null
   totalMedicamentos: number
+  totalProcedimientos: number
 }
 
 export interface ConsultaInput {
@@ -95,6 +113,8 @@ export interface ConsultaInput {
   signos: SignosVitales
   diagnosticos: DiagnosticoConsulta[]
   medicamentos: MedicamentoRecetado[]
+  /** Opcional: las consultas anteriores a esta función no lo traen. */
+  procedimientos?: ProcedimientoConsulta[]
 }
 
 export interface FiltroHistorial {

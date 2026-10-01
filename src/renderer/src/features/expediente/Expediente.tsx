@@ -22,6 +22,7 @@ import { formatearFecha } from '@shared/lib/fecha'
 import { CabeceraPaciente } from './CabeceraPaciente'
 import { VistaConsulta } from './VistaConsulta'
 import { PanelDatosClinicos } from './PanelDatosClinicos'
+import { PanelExpediente } from './PanelExpediente'
 import { CitasDelPaciente } from './CitasDelPaciente'
 import { FormularioPaciente } from '../pacientes/FormularioPaciente'
 import type {
@@ -64,7 +65,8 @@ export function Expediente(): React.JSX.Element {
           alergias: [],
           antecedentes: [],
           cronicos: [],
-          medicacionActual: []
+          medicacionActual: [],
+          medicacionCronica: []
         })
         setHistorial([])
         setSeleccionada(null)
@@ -215,6 +217,8 @@ export function Expediente(): React.JSX.Element {
 
       {verClinico && <PanelDatosClinicos expediente={expediente} onCambio={cargar} />}
 
+      {verClinico && <PanelExpediente expediente={expediente} onCambio={cargar} />}
+
       <CitasDelPaciente pacienteId={pacienteId} nombre={expediente.paciente.nombreCompleto} />
 
       {!verClinico && (
@@ -324,6 +328,13 @@ export function Expediente(): React.JSX.Element {
                 <VistaConsulta
                   consulta={seleccionada}
                   onImprimir={(tipo) => void imprimir(seleccionada.id, tipo)}
+                  onCambio={async () => {
+                    // Recargar deja seleccionada la consulta mas reciente; se
+                    // vuelve a la que el doctor tenia abierta.
+                    const id = seleccionada.id
+                    await cargar()
+                    await abrirConsulta(id)
+                  }}
                 />
               ) : (
                 <Vacio titulo="Seleccione una consulta" />
@@ -339,6 +350,7 @@ export function Expediente(): React.JSX.Element {
                   <th className="px-4 py-2.5 font-semibold">Motivo</th>
                   <th className="px-4 py-2.5 font-semibold">Diagnóstico principal</th>
                   <th className="px-4 py-2.5 text-right font-semibold">Medicamentos</th>
+                  <th className="px-4 py-2.5 text-right font-semibold">Exámenes</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--borde)]">
@@ -362,6 +374,9 @@ export function Expediente(): React.JSX.Element {
                     </td>
                     <td className="px-4 py-2.5 text-right text-[0.875rem] tabular-nums text-[var(--tinta-suave)]">
                       {c.totalMedicamentos}
+                    </td>
+                    <td className="px-4 py-2.5 text-right text-[0.875rem] tabular-nums text-[var(--tinta-suave)]">
+                      {c.totalProcedimientos}
                     </td>
                   </tr>
                 ))}

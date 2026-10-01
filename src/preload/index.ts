@@ -1,8 +1,11 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
+  Adjunto,
+  AdjuntoInput,
   Alergia,
   Antecedente,
   ArchivoBackupPublico,
+  CategoriaExamen,
   Cie10,
   CitaConPaciente,
   CitaInput,
@@ -11,19 +14,36 @@ import type {
   ConsultaInput,
   ConsultaResumen,
   DocumentoPublico,
+  EntradaAuditoriaPublica,
   EstadoActualizacion,
   EstadoAuth,
+  EstadoLicencia,
   EstadoCita,
+  Empresa,
+  EmpresaInput,
+  Examen,
+  ExamenInput,
   ExpedienteResumen,
   FichaPaciente,
+  FiltroAuditoria,
   FiltroHistorial,
+  Incapacidad,
+  IncapacidadInput,
+  MedicacionCronica,
+  MedicacionCronicaInput,
   Medicamento,
   MedicamentoInput,
+  MovimientoInput,
+  MovimientoInventario,
+  NovedadesVersion,
   PacienteConResumen,
   PacienteInput,
   PeriodoReporte,
   PlantillaTratamiento,
+  Referencia,
+  ReferenciaInput,
   ReporteCitas,
+  ReporteEmpresa,
   Resultado,
   ResumenAgenda,
   ResumenDashboard,
@@ -42,6 +62,11 @@ function invocar<T>(canal: string, ...argumentos: unknown[]): Promise<Resultado<
  * llamar a estas operaciones concretas.
  */
 const api = {
+  licencia: {
+    estado: () => invocar<EstadoLicencia>('licencia:estado'),
+    activar: (codigo: string) => invocar<EstadoLicencia>('licencia:activar', codigo),
+    reiniciar: () => invocar<void>('licencia:reiniciar')
+  },
   auth: {
     estado: () => invocar<EstadoAuth>('auth:estado'),
     instalar: (datos: { nombreDoctor: string; nombreClinica: string; password: string }) =>
@@ -160,6 +185,12 @@ const api = {
     actualizarMedicamento: (id: number, entrada: MedicamentoInput) =>
       invocar<void>('catalogo:actualizarMedicamento', id, entrada),
     desactivarMedicamento: (id: number) => invocar<void>('catalogo:desactivarMedicamento', id),
+    buscarExamenes: (texto: string) => invocar<Examen[]>('catalogo:buscarExamenes', texto),
+    listarExamenes: () => invocar<Examen[]>('catalogo:listarExamenes'),
+    crearExamen: (entrada: ExamenInput) => invocar<number>('catalogo:crearExamen', entrada),
+    actualizarExamen: (id: number, entrada: ExamenInput) =>
+      invocar<void>('catalogo:actualizarExamen', id, entrada),
+    desactivarExamen: (id: number) => invocar<void>('catalogo:desactivarExamen', id),
     plantillasPorCie10: (codigo: string) =>
       invocar<PlantillaTratamiento[]>('catalogo:plantillasPorCie10', codigo),
     listarPlantillas: () => invocar<PlantillaTratamiento[]>('catalogo:listarPlantillas'),
@@ -190,12 +221,82 @@ const api = {
     dePaciente: (pacienteId: number) =>
       invocar<DocumentoPublico[]>('documentos:dePaciente', pacienteId)
   },
+  adjuntos: {
+    /** Abre el selector de Windows. Devuelve vacío si se cancela. */
+    elegir: () =>
+      invocar<{ ruta: string; nombre: string; tamanoBytes: number }[]>('adjuntos:elegir'),
+    agregar: (entrada: AdjuntoInput, rutaOrigen: string) =>
+      invocar<number>('adjuntos:agregar', entrada, rutaOrigen),
+    dePaciente: (pacienteId: number) => invocar<Adjunto[]>('adjuntos:dePaciente', pacienteId),
+    deConsulta: (consultaId: number) => invocar<Adjunto[]>('adjuntos:deConsulta', consultaId),
+    actualizar: (
+      id: number,
+      datos: {
+        titulo: string
+        descripcion: string | null
+        categoria: CategoriaExamen
+        fechaEstudio: string | null
+      }
+    ) => invocar<void>('adjuntos:actualizar', id, datos),
+    eliminar: (id: number) => invocar<void>('adjuntos:eliminar', id),
+    abrir: (id: number) => invocar<void>('adjuntos:abrir', id),
+    /** Data URL de la imagen, para poder verla dentro del programa. */
+    imagen: (id: number) => invocar<string>('adjuntos:imagen', id)
+  },
+  incapacidades: {
+    crear: (entrada: IncapacidadInput) => invocar<Incapacidad>('incapacidades:crear', entrada),
+    listar: (pacienteId: number) => invocar<Incapacidad[]>('incapacidades:listar', pacienteId),
+    imprimir: (id: number) => invocar<string>('incapacidades:imprimir', id),
+    anular: (id: number, motivo: string) => invocar<void>('incapacidades:anular', id, motivo)
+  },
+  referencias: {
+    crear: (entrada: ReferenciaInput) => invocar<Referencia>('referencias:crear', entrada),
+    listar: (pacienteId: number) => invocar<Referencia[]>('referencias:listar', pacienteId),
+    imprimir: (id: number) => invocar<string>('referencias:imprimir', id),
+    anular: (id: number, motivo: string) => invocar<void>('referencias:anular', id, motivo)
+  },
+  cronica: {
+    listar: (pacienteId: number) => invocar<MedicacionCronica[]>('cronica:listar', pacienteId),
+    agregar: (entrada: MedicacionCronicaInput) => invocar<number>('cronica:agregar', entrada),
+    suspender: (id: number, activa: boolean) => invocar<void>('cronica:suspender', id, activa),
+    eliminar: (id: number) => invocar<void>('cronica:eliminar', id)
+  },
+  empresas: {
+    listar: (soloActivas?: boolean) => invocar<Empresa[]>('empresas:listar', soloActivas),
+    crear: (entrada: EmpresaInput) => invocar<number>('empresas:crear', entrada),
+    actualizar: (id: number, entrada: EmpresaInput) =>
+      invocar<void>('empresas:actualizar', id, entrada),
+    alternar: (id: number, activa: boolean) => invocar<void>('empresas:alternar', id, activa),
+    pacientes: (id: number) => invocar<PacienteConResumen[]>('empresas:pacientes', id),
+    reporte: (id: number, desde: string, hasta: string) =>
+      invocar<ReporteEmpresa>('empresas:reporte', id, desde, hasta),
+    imprimirReporte: (id: number, desde: string, hasta: string) =>
+      invocar<{ ruta: string }>('empresas:imprimirReporte', id, desde, hasta)
+  },
+  inventario: {
+    listar: () => invocar<Medicamento[]>('inventario:listar'),
+    movimientos: (medicamentoId: number) =>
+      invocar<MovimientoInventario[]>('inventario:movimientos', medicamentoId),
+    ultimos: () => invocar<MovimientoInventario[]>('inventario:ultimos'),
+    registrar: (entrada: MovimientoInput) => invocar<number>('inventario:registrar', entrada),
+    entregar: (datos: {
+      medicamentoId: number
+      cantidad: number
+      pacienteId: number
+      consultaId?: number | null
+      motivo?: string | null
+    }) => invocar<number>('inventario:entregar', datos)
+  },
   backups: {
     listar: () => invocar<ArchivoBackupPublico[]>('backups:listar'),
     crear: () => invocar<{ ruta: string; tamanoBytes: number }>('backups:crear'),
     restaurar: (ruta: string) =>
       invocar<{ copiaDeSeguridadPrevia: string }>('backups:restaurar', ruta),
     copiarA: (ruta: string) => invocar<string | null>('backups:copiarA', ruta)
+  },
+  auditoria: {
+    listar: (filtro?: FiltroAuditoria) =>
+      invocar<EntradaAuditoriaPublica[]>('auditoria:listar', filtro)
   },
   config: {
     obtener: () => invocar<ConfiguracionClinica>('config:obtener'),
@@ -209,6 +310,8 @@ const api = {
     buscar: () => invocar<EstadoActualizacion>('actualizaciones:buscar'),
     descargar: () => invocar<void>('actualizaciones:descargar'),
     instalar: () => invocar<void>('actualizaciones:instalar'),
+    novedades: () => invocar<NovedadesVersion | null>('actualizaciones:novedades'),
+    novedadesVistas: () => invocar<void>('actualizaciones:novedadesVistas'),
     /**
      * Suscripcion al progreso. Se expone el listener envuelto para que la
      * ventana nunca reciba el objeto `event` de Electron.

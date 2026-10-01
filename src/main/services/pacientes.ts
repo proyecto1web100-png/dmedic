@@ -16,6 +16,21 @@ export class ErrorIdentidadDuplicada extends Error {
   }
 }
 
+/**
+ * El responsable de un menor tiene que ser un paciente real y distinto de el
+ * mismo: si no, el expediente del nino apuntaria a nadie o a si mismo, que es
+ * justo lo que la vinculacion existe para evitar.
+ */
+function exigirResponsableValido(responsableId: number | null, pacienteId?: number): void {
+  if (responsableId === null) return
+  if (pacienteId !== undefined && responsableId === pacienteId) {
+    throw new Error('Un paciente no puede ser su propio responsable')
+  }
+  if (!repo.obtener(responsableId)) {
+    throw new Error('El responsable seleccionado no existe')
+  }
+}
+
 function validar(entrada: PacienteInput): PacienteInput {
   const resultado = pacienteInputSchema.safeParse(entrada)
   if (!resultado.success) {
@@ -27,6 +42,7 @@ function validar(entrada: PacienteInput): PacienteInput {
 
 export function crear(entrada: PacienteInput): number {
   const datos = validar(entrada)
+  exigirResponsableValido(datos.responsableId ?? null)
 
   if (datos.numeroIdentidad) {
     const existente = repo.obtenerPorIdentidad(datos.numeroIdentidad)
@@ -34,6 +50,24 @@ export function crear(entrada: PacienteInput): number {
   }
 
   const id = repo.crear(datos)
+
+  // Alergias y antecedentes recogidos en el alta. Van despues de crear porque
+  // necesitan el id, y cada uno queda fechado igual que si se hubiera agregado
+  // luego desde el expediente.
+  for (const alergia of datos.alergiasIniciales ?? []) {
+    repo.agregarAlergia(id, {
+      sustancia: alergia.sustancia,
+      reaccion: alergia.reaccion ?? null,
+      gravedad: alergia.gravedad
+    })
+  }
+  for (const antecedente of datos.antecedentesIniciales ?? []) {
+    repo.agregarAntecedente(id, {
+      tipo: antecedente.tipo,
+      descripcion: antecedente.descripcion
+    })
+  }
+
   auditar({
     accion: 'paciente.creado',
     entidad: 'paciente',
@@ -50,6 +84,7 @@ export function crear(entrada: PacienteInput): number {
 
 export function actualizar(id: number, entrada: PacienteInput): void {
   const datos = validar(entrada)
+  exigirResponsableValido(datos.responsableId ?? null, id)
 
   if (datos.numeroIdentidad) {
     const existente = repo.obtenerPorIdentidad(datos.numeroIdentidad)

@@ -1,4 +1,34 @@
+import type { MedicacionCronica } from './expediente'
+
 export type Sexo = 'M' | 'F'
+
+/** Escolaridad alcanzada. Cambia como se le explica al paciente su tratamiento. */
+export type NivelEducativo =
+  | 'ninguno'
+  | 'primaria'
+  | 'secundaria'
+  | 'tecnico'
+  | 'universitario'
+  | 'postgrado'
+
+export const NIVELES_EDUCATIVOS: { valor: NivelEducativo; etiqueta: string }[] = [
+  { valor: 'ninguno', etiqueta: 'Ninguno' },
+  { valor: 'primaria', etiqueta: 'Primaria' },
+  { valor: 'secundaria', etiqueta: 'Secundaria' },
+  { valor: 'tecnico', etiqueta: 'Técnico' },
+  { valor: 'universitario', etiqueta: 'Universitario' },
+  { valor: 'postgrado', etiqueta: 'Postgrado' }
+]
+
+export type EstadoCivil = 'soltero' | 'casado' | 'union_libre' | 'divorciado' | 'viudo'
+
+export const ESTADOS_CIVILES: { valor: EstadoCivil; etiqueta: string }[] = [
+  { valor: 'soltero', etiqueta: 'Soltero(a)' },
+  { valor: 'casado', etiqueta: 'Casado(a)' },
+  { valor: 'union_libre', etiqueta: 'Unión libre' },
+  { valor: 'divorciado', etiqueta: 'Divorciado(a)' },
+  { valor: 'viudo', etiqueta: 'Viudo(a)' }
+]
 
 export type GravedadAlergia = 'leve' | 'moderada' | 'grave'
 
@@ -72,6 +102,14 @@ export interface Paciente {
   notas: string | null
   responsableId: number | null
   responsableParentesco: string | null
+  nivelEducativo: NivelEducativo | null
+  ocupacion: string | null
+  estadoCivil: EstadoCivil | null
+  /** Quien relata la historia clinica cuando no es el propio paciente. */
+  historiador: string | null
+  historiadorParentesco: string | null
+  empresaId: number | null
+  codigoEmpleado: string | null
   activo: boolean
   creadoEn: string
   actualizadoEn: string
@@ -82,6 +120,9 @@ export interface PacienteConResumen extends Paciente {
   edad: number
   ultimaConsultaEn: string | null
   totalConsultas: number
+  /** Empresa con convenio a la que pertenece, si la hay. */
+  empresaNombre: string | null
+  empresaCodigo: string | null
 }
 
 /** Todo lo que la cabecera del expediente necesita mostrar de inmediato. */
@@ -92,6 +133,8 @@ export interface ExpedienteResumen {
   antecedentes: Antecedente[]
   cronicos: ProblemaCronico[]
   medicacionActual: MedicacionActual[]
+  /** Medicacion permanente por enfermedad de base, aparte de las recetas. */
+  medicacionCronica: MedicacionCronica[]
   responsable: { id: number; nombreCompleto: string; numeroIdentidad: string | null } | null
 }
 
@@ -131,5 +174,18 @@ export interface PacienteInput {
   notas?: string | null
   responsableId?: number | null
   responsableParentesco?: string | null
+  nivelEducativo?: NivelEducativo | null
+  ocupacion?: string | null
+  estadoCivil?: EstadoCivil | null
+  historiador?: string | null
+  historiadorParentesco?: string | null
+  empresaId?: number | null
+  codigoEmpleado?: string | null
   contactos?: ContactoEmergencia[]
+  /**
+   * Historia clinica inicial. Solo se usa al crear: despues se administra desde
+   * el expediente, que es donde queda el registro fechado de cada cambio.
+   */
+  alergiasIniciales?: { sustancia: string; reaccion: string | null; gravedad: GravedadAlergia }[]
+  antecedentesIniciales?: { tipo: TipoAntecedente; descripcion: string }[]
 }

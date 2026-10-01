@@ -10,6 +10,7 @@ import { calcularImc, clasificarImc, evaluarVital, signosVacios } from '@shared/
 import { formatearFecha } from '@shared/lib/fecha'
 import { BuscadorCie10 } from './BuscadorCie10'
 import { EditorMedicamentos } from './EditorMedicamentos'
+import { EditorProcedimientos } from './EditorProcedimientos'
 import { VistaConsulta } from '../expediente/VistaConsulta'
 import type {
   Cie10,
@@ -19,6 +20,7 @@ import type {
   ExpedienteResumen,
   MedicamentoRecetado,
   PlantillaTratamiento,
+  ProcedimientoConsulta,
   SignosVitales
 } from '@shared/types'
 
@@ -51,6 +53,7 @@ interface Borrador {
   signos: SignosVitales
   diagnosticos: DiagnosticoConsulta[]
   medicamentos: MedicamentoRecetado[]
+  procedimientos: ProcedimientoConsulta[]
 }
 
 function borradorVacio(): Borrador {
@@ -65,7 +68,8 @@ function borradorVacio(): Borrador {
     sinProximaCita: false,
     signos: signosVacios(),
     diagnosticos: [],
-    medicamentos: []
+    medicamentos: [],
+    procedimientos: []
   }
 }
 
@@ -127,13 +131,15 @@ export function EditorConsulta(): React.JSX.Element {
             sinProximaCita: consulta.sinProximaCita,
             signos: consulta.signos,
             diagnosticos: consulta.diagnosticos,
-            medicamentos: consulta.medicamentos
+            medicamentos: consulta.medicamentos,
+            procedimientos: consulta.procedimientos
           })
         } else {
           // Borrador local: si se fue la luz o se cerró el programa, no se pierde lo escrito.
           const guardado = window.localStorage.getItem(clave)
           if (guardado) {
-            setDatos(JSON.parse(guardado) as Borrador)
+            const previo = JSON.parse(guardado) as Borrador
+            setDatos({ ...borradorVacio(), ...previo })
             setBorradorRestaurado(true)
           } else if (citaId) {
             // Al venir de la agenda, el motivo de la cita arranca el motivo de consulta.
@@ -210,6 +216,16 @@ export function EditorConsulta(): React.JSX.Element {
           duracion: item.duracion,
           indicaciones: item.indicaciones
         }))
+      ],
+      procedimientos: [
+        ...actual.procedimientos,
+        ...(plantilla.examenes ?? []).map((examen) => ({
+          examenId: examen.examenId,
+          nombre: examen.nombre,
+          categoria: examen.categoria,
+          indicaciones: examen.indicaciones,
+          urgente: examen.urgente
+        }))
       ]
     }))
     setPlantillas([])
@@ -233,7 +249,8 @@ export function EditorConsulta(): React.JSX.Element {
         sinProximaCita: datos.sinProximaCita,
         signos: datos.signos,
         diagnosticos: datos.diagnosticos,
-        medicamentos: datos.medicamentos
+        medicamentos: datos.medicamentos,
+        procedimientos: datos.procedimientos
       }
 
       if (consultaId) {
@@ -426,6 +443,13 @@ export function EditorConsulta(): React.JSX.Element {
         />
       </Bloque>
 
+      <Bloque titulo="Exámenes y procedimientos">
+        <EditorProcedimientos
+          procedimientos={datos.procedimientos}
+          onCambiar={(lista) => cambiar('procedimientos', lista)}
+        />
+      </Bloque>
+
       <Bloque titulo="Observaciones">
         <AreaTexto
           rows={3}
@@ -507,6 +531,28 @@ export function EditorConsulta(): React.JSX.Element {
               .filter((a) => a.activa)
               .map((a) => `${a.sustancia} (${a.gravedad})`)
               .join(' · ')}
+          </Aviso>
+        </div>
+      )}
+
+      {/* Lo que el paciente ya toma de forma permanente. Es informativo: el
+          doctor decide si lo repite en la receta del día o no. */}
+      {expediente.medicacionCronica.length > 0 && (
+        <div className="mb-4">
+          <Aviso tono="info">
+            <span className="font-semibold">Ya toma de forma permanente:</span>{' '}
+            {expediente.medicacionCronica
+              .map((m) =>
+                [
+                  [m.nombre, m.concentracion].filter(Boolean).join(' '),
+                  m.dosis,
+                  m.frecuencia,
+                  m.motivo ? `por ${m.motivo}` : null
+                ]
+                  .filter(Boolean)
+                  .join(' · ')
+              )
+              .join(' | ')}
           </Aviso>
         </div>
       )}

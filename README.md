@@ -14,7 +14,11 @@ la base de datos, los expedientes y los backups viven en la computadora de la cl
 |---|---|
 | `npm install` | Instala dependencias |
 | `npm run dev` | Ejecuta la aplicación en modo desarrollo |
-| `npm run verificar` | Ejecuta el banco de pruebas contra el código real |
+| `npm run verificar` | Banco de pruebas del núcleo (pacientes, consultas, agenda, backups) |
+| `npm run verificar:expediente` | Banco de pruebas del expediente ampliado, inventario y empresas |
+| `npm run verificar:licencia` | Banco de pruebas del periodo de prueba y la activación |
+| `npm run codigo -- <ID> [días]` | Genera un código de activación para un equipo |
+| `npm run demo:sembrar` | Crea un perfil de ejemplo en `%TEMP%/dmedic-demo` para revisar la interfaz |
 | `npm run typecheck` | Comprueba los tipos de los tres procesos |
 | `npm run build` | Compila la aplicación a `out/` |
 | `npm run dist` | Genera el instalador de Windows en `dist/` |
@@ -80,6 +84,27 @@ Reglas que se aplican en el proceso principal, no en la interfaz:
 - El cruce de horarios se evalúa dentro de la agenda de cada doctor: dos
   doctores atendiendo a la misma hora no es un conflicto.
 
+## Exámenes y procedimientos
+
+En cada consulta se pueden indicar estudios —análisis de sangre, orina, imagen o
+procedimientos—, buscándolos en el catálogo de la clínica o escribiendo uno que
+no esté catalogado. Cada estudio lleva su tipo, su preparación (que se carga
+sola desde el catálogo y queda editable) y una marca de **urgente**.
+
+Lo indicado se imprime en la receta, en el resumen de consulta y en el
+expediente. Cuando una consulta **no lleva medicamentos pero sí estudios**, el
+documento sale titulado *Orden de exámenes* en lugar de receta, con una casilla
+por estudio para que el laboratorio la marque.
+
+Igual que los medicamentos de la receta, los estudios se copian dentro de la
+consulta: editar o retirar un examen del catálogo nunca cambia lo que ya se le
+indicó a un paciente. El catálogo se administra en **Catálogo clínico →
+Exámenes y procedimientos**.
+
+Los **protocolos de tratamiento** también pueden incluir los estudios que el
+doctor suele pedir para un diagnóstico: al aplicar el protocolo en una consulta,
+sus exámenes se agregan junto a sus medicamentos, y todo queda editable.
+
 ## Documentos en PDF
 
 Todos en **tamaño carta** (612 × 792 pt), salvo la receta, que es configurable.
@@ -88,7 +113,7 @@ comprobación fiable de que saldrá en el papel correcto.
 
 | Documento | Contenido | Dónde se guarda |
 |---|---|---|
-| Receta | Prescripción con alergias visibles y firma del doctor que atendió | `expedientes/<paciente>/Recetas` |
+| Receta | Prescripción y exámenes indicados, con alergias visibles y firma del doctor que atendió. Si la consulta solo indica estudios, sale como **orden de exámenes** | `expedientes/<paciente>/Recetas` |
 | Resumen de consulta | Una consulta completa | `expedientes/<paciente>/Consultas` |
 | Expediente | Datos, contactos, alergias, antecedentes, crónicos e historial íntegro | `expedientes/<paciente>/Documentos` |
 | Reporte de agenda | Citas por día, semana o mes, de un doctor o de todos | `reportes/` |
@@ -101,13 +126,58 @@ comprobación fiable de que saldrá en el papel correcto.
 | Pacientes (alta, edición, búsqueda, archivado, borrado) | Completo |
 | Expediente: alergias, antecedentes, problemas crónicos | Completo |
 | Consultas, signos vitales, diagnósticos CIE-10, recetas | Completo |
+| Exámenes y procedimientos indicados en consulta | Completo |
 | Historial con línea de tiempo, tabla, filtros y comparación | Completo |
 | Documentos PDF: receta y resumen de consulta | Completo |
 | Agenda de citas: mes, semana, día | Completo |
 | Backups automáticos, verificación y restauración | Completo |
 | Configuración y auditoría | Completo |
-| Plantillas de tratamiento del doctor | Motor listo; falta pantalla de gestión |
+| Plantillas de tratamiento del doctor (con medicamentos y exámenes) | Completo |
+| Catálogo de exámenes de la clínica | Completo |
+| Ficha social: escolaridad, ocupación, estado civil, historiador | Completo |
+| Estudios adjuntos (laboratorios, radiografías) con interpretación | Completo |
+| Constancias de incapacidad con folio y PDF | Completo |
+| Referencias a otro médico o especialista | Completo |
+| Medicación permanente por enfermedad de base | Completo |
+| Inventario de medicamentos con entradas, salidas y ajustes | Completo |
+| Empresas con convenio y reporte de atenciones | Completo |
+| Periodo de prueba y activación por equipo | Completo |
 | Exportación a Excel/CSV | No incluida (descartada por decisión de producto) |
+
+## Periodo de prueba y activación
+
+Cada equipo arranca con 24 horas de prueba. Al agotarse, el proceso principal
+rechaza todos los canales IPC salvo los que la pantalla de bloqueo necesita, así
+que el candado no se puede saltar desde la interfaz.
+
+El código se calcula con HMAC sobre el identificador del equipo
+(`MachineGuid` de Windows), de modo que uno entregado a una clínica no sirve en
+otra. Hay dos clases de código:
+
+- **Definitivo**: activa el equipo para siempre y vuelve a habilitar las
+  actualizaciones automáticas.
+- **Prórroga** de 7, 15 o 30 días: concede esos días de prueba adicionales y
+  nada más. Cada código de prórroga solo se puede usar una vez en el mismo
+  equipo, y mientras dura las actualizaciones siguen apagadas.
+
+Los códigos se generan desde la pestaña **Códigos de activación** del Publicador
+(`npm run publicador`): se pega el ID que muestra la computadora de la clínica y
+salen los cuatro códigos con su botón de copiar. El ID se acepta con guiones o
+sin ellos, en mayúsculas o minúsculas. También existe la vía de línea de
+comandos, `npm run codigo -- <ID> [días]`, que da exactamente los mismos códigos.
+
+Generar un código **no depende de la versión instalada en la clínica**: lo único
+que interviene es la semilla y el identificador del equipo. Mientras la semilla
+no cambie, un código emitido hoy sirve para cualquier versión compilada con
+ella, sin tener que publicar nada nuevo.
+
+El estado vive por duplicado en `%APPDATA%/DMedic/licencia.json` y en
+`HKCU\Software\DMedic`: borrar uno de los dos no reinicia la prueba, y atrasar
+el reloj la da por consumida.
+
+> La semilla que firma los códigos está en `publicador/semilla.txt`, fuera de
+> git porque este repositorio es público. electron-vite la inyecta al compilar.
+> **Respáldela**: si se pierde, los códigos ya entregados no se pueden regenerar.
 
 ## Cómo publicar una actualización
 
@@ -117,6 +187,21 @@ clínica**, y si no hay internet todo lo demás funciona igual.
 
 Antes de la primera publicación, en `electron-builder.yml` hay que reemplazar
 `owner` por el usuario real de GitHub.
+
+La forma normal de hacerlo es el **Publicador**, una herramienta interna que
+vive en `publicador/`. Se abre con doble clic en `publicador/Publicador.bat`
+(o con `npm run publicador`). Pide la versión nueva y las notas para el doctor,
+y se encarga del resto: compila, sube el instalador como GitHub Release, escribe
+las notas, y confirma `package.json` en el repositorio.
+
+El token de GitHub se pide una sola vez y queda en `publicador/token.txt`, que
+está en `.gitignore` y nunca se sube.
+
+El Publicador **no forma parte de la aplicación**: el instalador solo empaqueta
+`out/**` y `package.json` (ver `files:` en `electron-builder.yml`), así que esta
+carpeta no puede llegar a la computadora de la clínica.
+
+También se puede hacer a mano:
 
 ```bash
 # 1. Subir el número de versión en package.json (1.0.0 → 1.1.0)

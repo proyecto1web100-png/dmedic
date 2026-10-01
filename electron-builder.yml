@@ -10,6 +10,9 @@ files:
   - out/**
   - package.json
   - '!out/main/verificar.js'
+  - '!out/main/verificar-expediente.js'
+  - '!out/main/sembrar-demo.js'
+  - '!out/main/verificar-licencia.js'
 
 # El binario nativo de SQLite no puede ir empaquetado dentro del asar.
 asarUnpack:

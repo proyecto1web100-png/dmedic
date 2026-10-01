@@ -290,7 +290,12 @@ export function actualizarUsuario(id: number, datos: UsuarioInput): void {
     throw new Error('Debe existir al menos un administrador activo')
   }
 
-  sistema.actualizarUsuario(id, { nombre, rol: datos.rol, esAdministrador })
+  sistema.actualizarUsuario(id, {
+    nombre,
+    rol: datos.rol,
+    esAdministrador,
+    numeroColegiacion: datos.numeroColegiacion?.trim() || null
+  })
   auditar({
     accion: 'usuario.editado',
     entidad: 'usuario',

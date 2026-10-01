@@ -11,3 +11,12 @@ dist/
 expedientes/
 backups/
 *.tsbuildinfo
+
+# El token de GitHub del publicador jamas se sube
+publicador/token.txt
+
+# La semilla que firma los codigos de activacion. Este repositorio es publico:
+# si la semilla se subiera, cualquiera podria generar codigos validos.
+publicador/semilla.txt
+
+publicador/token.txt

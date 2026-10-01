@@ -1,4 +1,5 @@
 import { db, enTransaccion } from '../db/conexion'
+import { medicacionCronica } from './expediente'
 import { calcularEdad, nombreCompleto, nombreListado } from '@shared/lib/paciente'
 import { ahoraIso } from '@shared/lib/fecha'
 import type {
@@ -32,6 +33,13 @@ interface FilaPaciente {
   notas: string | null
   responsable_id: number | null
   responsable_parentesco: string | null
+  nivel_educativo: string | null
+  ocupacion: string | null
+  estado_civil: string | null
+  historiador: string | null
+  historiador_parentesco: string | null
+  empresa_id: number | null
+  codigo_empleado: string | null
   activo: number
   creado_en: string
   actualizado_en: string
@@ -57,19 +65,33 @@ function aPaciente(f: FilaPaciente): Paciente {
     notas: f.notas,
     responsableId: f.responsable_id,
     responsableParentesco: f.responsable_parentesco,
+    nivelEducativo: (f.nivel_educativo as Paciente['nivelEducativo']) ?? null,
+    ocupacion: f.ocupacion,
+    estadoCivil: (f.estado_civil as Paciente['estadoCivil']) ?? null,
+    historiador: f.historiador,
+    historiadorParentesco: f.historiador_parentesco,
+    empresaId: f.empresa_id,
+    codigoEmpleado: f.codigo_empleado,
     activo: f.activo === 1,
     creadoEn: f.creado_en,
     actualizadoEn: f.actualizado_en
   }
 }
 
-function conResumen(p: Paciente, ultima: string | null, total: number): PacienteConResumen {
+function conResumen(
+  p: Paciente,
+  ultima: string | null,
+  total: number,
+  empresa: { nombre: string | null; codigo: string | null } = { nombre: null, codigo: null }
+): PacienteConResumen {
   return {
     ...p,
     nombreCompleto: nombreCompleto(p),
     edad: calcularEdad(p.fechaNacimiento),
     ultimaConsultaEn: ultima,
-    totalConsultas: total
+    totalConsultas: total,
+    empresaNombre: empresa.nombre,
+    empresaCodigo: empresa.codigo
   }
 }
 
@@ -97,7 +119,8 @@ function textoBusqueda(input: PacienteInput, numeroExpediente: string): string {
     input.primerApellido,
     input.segundoApellido,
     input.numeroIdentidad,
-    input.telefono
+    input.telefono,
+    input.codigoEmpleado
   ]
     .filter(Boolean)
     .join(' ')
@@ -119,12 +142,16 @@ export function crear(input: PacienteInput): number {
            numero_expediente, primer_nombre, segundo_nombre, primer_apellido, segundo_apellido,
            fecha_nacimiento, sexo, numero_identidad, telefono, correo, direccion,
            tipo_sangre, aseguradora, referido_por, notas,
-           responsable_id, responsable_parentesco, activo, creado_en, actualizado_en
+           responsable_id, responsable_parentesco,
+           nivel_educativo, ocupacion, estado_civil, historiador, historiador_parentesco,
+           empresa_id, codigo_empleado, activo, creado_en, actualizado_en
          ) VALUES (
            @numeroExpediente, @primerNombre, @segundoNombre, @primerApellido, @segundoApellido,
            @fechaNacimiento, @sexo, @numeroIdentidad, @telefono, @correo, @direccion,
            @tipoSangre, @aseguradora, @referidoPor, @notas,
-           @responsableId, @responsableParentesco, 1, @ahora, @ahora
+           @responsableId, @responsableParentesco,
+           @nivelEducativo, @ocupacion, @estadoCivil, @historiador, @historiadorParentesco,
+           @empresaId, @codigoEmpleado, 1, @ahora, @ahora
          )`
       )
       .run({
@@ -145,6 +172,13 @@ export function crear(input: PacienteInput): number {
         notas: input.notas ?? null,
         responsableId: input.responsableId ?? null,
         responsableParentesco: input.responsableParentesco ?? null,
+        nivelEducativo: input.nivelEducativo ?? null,
+        ocupacion: input.ocupacion ?? null,
+        estadoCivil: input.estadoCivil ?? null,
+        historiador: input.historiador ?? null,
+        historiadorParentesco: input.historiadorParentesco ?? null,
+        empresaId: input.empresaId ?? null,
+        codigoEmpleado: input.codigoEmpleado ?? null,
         ahora
       })
 
@@ -170,6 +204,10 @@ export function actualizar(id: number, input: PacienteInput): void {
            direccion = @direccion, tipo_sangre = @tipoSangre, aseguradora = @aseguradora,
            referido_por = @referidoPor, notas = @notas,
            responsable_id = @responsableId, responsable_parentesco = @responsableParentesco,
+           nivel_educativo = @nivelEducativo, ocupacion = @ocupacion,
+           estado_civil = @estadoCivil, historiador = @historiador,
+           historiador_parentesco = @historiadorParentesco,
+           empresa_id = @empresaId, codigo_empleado = @codigoEmpleado,
            actualizado_en = @ahora
          WHERE id = @id`
       )
@@ -191,6 +229,13 @@ export function actualizar(id: number, input: PacienteInput): void {
         notas: input.notas ?? null,
         responsableId: input.responsableId ?? null,
         responsableParentesco: input.responsableParentesco ?? null,
+        nivelEducativo: input.nivelEducativo ?? null,
+        ocupacion: input.ocupacion ?? null,
+        estadoCivil: input.estadoCivil ?? null,
+        historiador: input.historiador ?? null,
+        historiadorParentesco: input.historiadorParentesco ?? null,
+        empresaId: input.empresaId ?? null,
+        codigoEmpleado: input.codigoEmpleado ?? null,
         ahora: ahoraIso()
       })
 
@@ -246,6 +291,8 @@ export function posiblesDuplicados(
 interface FilaBusqueda extends FilaPaciente {
   ultima_consulta: string | null
   total_consultas: number
+  empresa_nombre: string | null
+  empresa_codigo: string | null
 }
 
 const SELECT_CON_RESUMEN = `
@@ -253,8 +300,18 @@ const SELECT_CON_RESUMEN = `
          (SELECT MAX(c.fecha) FROM consulta c
            WHERE c.paciente_id = p.id AND c.estado = 'activa') AS ultima_consulta,
          (SELECT COUNT(*) FROM consulta c
-           WHERE c.paciente_id = p.id AND c.estado = 'activa') AS total_consultas
-  FROM paciente p`
+           WHERE c.paciente_id = p.id AND c.estado = 'activa') AS total_consultas,
+         e.nombre AS empresa_nombre,
+         e.codigo AS empresa_codigo
+  FROM paciente p
+  LEFT JOIN empresa e ON e.id = p.empresa_id`
+
+function deFila(f: FilaBusqueda): PacienteConResumen {
+  return conResumen(aPaciente(f), f.ultima_consulta, f.total_consultas, {
+    nombre: f.empresa_nombre,
+    codigo: f.empresa_codigo
+  })
+}
 
 export function buscar(
   texto: string,
@@ -273,7 +330,7 @@ export function buscar(
          LIMIT ?`
       )
       .all(limite) as FilaBusqueda[]
-    return filas.map((f) => conResumen(aPaciente(f), f.ultima_consulta, f.total_consultas))
+    return filas.map(deFila)
   }
 
   // Prefijo en cada palabra: escribir "jua per" encuentra "Juan Perez".
@@ -296,7 +353,19 @@ export function buscar(
     )
     .all(consultaFts, limite) as FilaBusqueda[]
 
-  return filas.map((f) => conResumen(aPaciente(f), f.ultima_consulta, f.total_consultas))
+  return filas.map(deFila)
+}
+
+/** Todos los pacientes de una empresa con convenio, para listarla y reportarla. */
+export function porEmpresa(empresaId: number): PacienteConResumen[] {
+  const filas = db()
+    .prepare(
+      `${SELECT_CON_RESUMEN}
+       WHERE p.empresa_id = ? AND p.activo = 1
+       ORDER BY p.primer_apellido, p.primer_nombre`
+    )
+    .all(empresaId) as FilaBusqueda[]
+  return filas.map(deFila)
 }
 
 export function contarActivos(): number {
@@ -537,12 +606,16 @@ export function expedienteResumen(pacienteId: number): ExpedienteResumen | null 
   }
 
   return {
-    paciente: conResumen(paciente, fila.ultima_consulta, fila.total_consultas),
+    paciente: conResumen(paciente, fila.ultima_consulta, fila.total_consultas, {
+      nombre: fila.empresa_nombre,
+      codigo: fila.empresa_codigo
+    }),
     contactos: contactos(pacienteId),
     alergias: alergias(pacienteId),
     antecedentes: antecedentes(pacienteId),
     cronicos: cronicos(pacienteId),
     medicacionActual: medicacionActual(pacienteId),
+    medicacionCronica: medicacionCronica(pacienteId),
     responsable
   }
 }

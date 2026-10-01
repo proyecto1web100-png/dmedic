@@ -1,7 +1,12 @@
 import { app, BrowserWindow, dialog } from 'electron'
 import { canal } from './registrar'
+import * as auditoria from '../audit/auditoria'
 import * as actualizaciones from '../services/actualizaciones'
 import * as auth from '../services/auth'
+import * as licencia from '../services/licencia'
+import * as expediente from '../services/expediente'
+import * as empresas from '../services/empresas'
+import * as inventario from '../services/inventario'
 import * as pacientes from '../services/pacientes'
 import * as consultas from '../services/consultas'
 import * as citas from '../services/citas'
@@ -10,13 +15,22 @@ import * as backups from '../services/backups'
 import * as catalogo from '../repositories/catalogo'
 import { configuracion, guardarConfiguracion } from '../repositories/sistema'
 import type {
+  AdjuntoInput,
   Alergia,
   Antecedente,
+  CategoriaExamen,
+  EmpresaInput,
+  IncapacidadInput,
+  MedicacionCronicaInput,
+  MovimientoInput,
+  ReferenciaInput,
   Cie10,
   CitaInput,
   ConfiguracionClinica,
   ConsultaInput,
   EstadoCita,
+  FiltroAuditoria,
+  ExamenInput,
   FiltroHistorial,
   MedicamentoInput,
   PacienteInput,
@@ -201,6 +215,14 @@ export function registrarCanales(): void {
     catalogo.actualizarMedicamento(id, entrada), gestionarCatalogo)
   canal('catalogo:desactivarMedicamento', (id: number) =>
     catalogo.desactivarMedicamento(id), gestionarCatalogo)
+  canal('catalogo:buscarExamenes', (texto: string) => catalogo.buscarExamenes(texto), verCatalogo)
+  canal('catalogo:listarExamenes', () => catalogo.listarExamenes(), verCatalogo)
+  canal('catalogo:crearExamen', (entrada: ExamenInput) =>
+    catalogo.crearExamen(entrada), gestionarCatalogo)
+  canal('catalogo:actualizarExamen', (id: number, entrada: ExamenInput) =>
+    catalogo.actualizarExamen(id, entrada), gestionarCatalogo)
+  canal('catalogo:desactivarExamen', (id: number) =>
+    catalogo.desactivarExamen(id), gestionarCatalogo)
   canal('catalogo:plantillasPorCie10', (codigo: string) =>
     catalogo.plantillasPorCie10(codigo), verCatalogo)
   canal('catalogo:listarPlantillas', () => catalogo.listarPlantillas(), verCatalogo)
@@ -260,15 +282,104 @@ export function registrarCanales(): void {
     { permiso: 'backups.crear' }
   )
 
+  // ===== Auditoria (solo administrador) =====
+  canal('auditoria:listar', (filtro?: FiltroAuditoria) => auditoria.listar(filtro ?? {}), {
+    permiso: 'usuarios.gestionar'
+  })
+
+  // ===== Archivos de estudios en el expediente =====
+  canal('adjuntos:elegir', () => expediente.elegirArchivos())
+  canal('adjuntos:agregar', (entrada: AdjuntoInput, rutaOrigen: string) =>
+    expediente.agregarAdjunto(entrada, rutaOrigen)
+  )
+  canal('adjuntos:dePaciente', (pacienteId: number) => expediente.adjuntosDePaciente(pacienteId))
+  canal('adjuntos:deConsulta', (consultaId: number) => expediente.adjuntosDeConsulta(consultaId))
+  canal(
+    'adjuntos:actualizar',
+    (
+      id: number,
+      datos: {
+        titulo: string
+        descripcion: string | null
+        categoria: CategoriaExamen
+        fechaEstudio: string | null
+      }
+    ) => expediente.actualizarAdjunto(id, datos)
+  )
+  canal('adjuntos:eliminar', (id: number) => expediente.eliminarAdjunto(id))
+  canal('adjuntos:abrir', (id: number) => expediente.abrirAdjunto(id))
+  canal('adjuntos:imagen', (id: number) => expediente.contenidoDeImagen(id))
+
+  // ===== Incapacidades =====
+  canal('incapacidades:crear', (entrada: IncapacidadInput) => expediente.crearIncapacidad(entrada))
+  canal('incapacidades:listar', (pacienteId: number) =>
+    expediente.incapacidadesDePaciente(pacienteId)
+  )
+  canal('incapacidades:imprimir', (id: number) => expediente.imprimirIncapacidad(id))
+  canal('incapacidades:anular', (id: number, motivo: string) =>
+    expediente.anularIncapacidad(id, motivo)
+  )
+
+  // ===== Referencias a especialista =====
+  canal('referencias:crear', (entrada: ReferenciaInput) => expediente.crearReferencia(entrada))
+  canal('referencias:listar', (pacienteId: number) => expediente.referenciasDePaciente(pacienteId))
+  canal('referencias:imprimir', (id: number) => expediente.imprimirReferencia(id))
+  canal('referencias:anular', (id: number, motivo: string) =>
+    expediente.anularReferencia(id, motivo)
+  )
+
+  // ===== Medicacion permanente =====
+  canal('cronica:listar', (pacienteId: number) => expediente.medicacionCronica(pacienteId))
+  canal('cronica:agregar', (entrada: MedicacionCronicaInput) =>
+    expediente.agregarMedicacionCronica(entrada)
+  )
+  canal('cronica:suspender', (id: number, activa: boolean) =>
+    expediente.suspenderMedicacionCronica(id, activa)
+  )
+  canal('cronica:eliminar', (id: number) => expediente.eliminarMedicacionCronica(id))
+
+  // ===== Empresas con convenio =====
+  canal('empresas:listar', (soloActivas?: boolean) => empresas.listar(soloActivas ?? false))
+  canal('empresas:crear', (entrada: EmpresaInput) => empresas.crear(entrada))
+  canal('empresas:actualizar', (id: number, entrada: EmpresaInput) =>
+    empresas.actualizar(id, entrada)
+  )
+  canal('empresas:alternar', (id: number, activa: boolean) => empresas.alternar(id, activa))
+  canal('empresas:pacientes', (id: number) => empresas.pacientesDe(id))
+  canal('empresas:reporte', (id: number, desde: string, hasta: string) =>
+    empresas.reporte(id, desde, hasta)
+  )
+  canal('empresas:imprimirReporte', (id: number, desde: string, hasta: string) =>
+    empresas.imprimirReporte(id, desde, hasta)
+  )
+
+  // ===== Inventario de medicamentos =====
+  canal('inventario:listar', () => inventario.listar())
+  canal('inventario:movimientos', (medicamentoId: number) => inventario.movimientos(medicamentoId))
+  canal('inventario:ultimos', () => inventario.ultimosMovimientos())
+  canal('inventario:registrar', (entrada: MovimientoInput) => inventario.registrar(entrada))
+  canal(
+    'inventario:entregar',
+    (datos: {
+      medicamentoId: number
+      cantidad: number
+      pacienteId: number
+      consultaId?: number | null
+      motivo?: string | null
+    }) => inventario.entregar(datos)
+  )
+
   // ===== Actualizaciones =====
   canal('actualizaciones:estado', () => actualizaciones.obtenerEstado())
   canal('actualizaciones:buscar', () => actualizaciones.buscar())
   canal('actualizaciones:descargar', () => actualizaciones.descargar())
   canal('actualizaciones:instalar', () => actualizaciones.instalarAlSalir())
+  canal('actualizaciones:novedades', () => actualizaciones.obtenerNovedades())
+  canal('actualizaciones:novedadesVistas', () => actualizaciones.marcarNovedadesVistas())
 
   // ===== Configuracion =====
   // Publico: la pantalla de inicio de sesion necesita el nombre y el logo de la clinica.
-  canal('config:obtener', () => configuracion(), { publico: true })
+  canal('config:obtener', () => configuracion(), { publico: true, duranteBloqueo: true })
   canal('config:guardar', (config: ConfiguracionClinica) => guardarConfiguracion(config), {
     permiso: 'configuracion.clinica'
   })
@@ -276,5 +387,26 @@ export function registrarCanales(): void {
     // La apariencia es preferencia de quien usa el equipo, no un dato de la clínica.
     guardarConfiguracion({ ...configuracion(), tema, tamanoFuente: tamano })
   })
-  canal('config:version', () => app.getVersion(), { publico: true })
+  canal('config:version', () => app.getVersion(), { publico: true, duranteBloqueo: true })
+
+  // ===== Periodo de prueba y activacion =====
+  // Publicos y vivos durante el bloqueo: son los unicos canales que la pantalla
+  // de prueba vencida necesita para dibujarse y para aceptar el codigo.
+  canal('licencia:estado', () => licencia.estado(), { publico: true, duranteBloqueo: true })
+  canal('licencia:activar', (codigo: string) => licencia.activar(codigo), {
+    publico: true,
+    duranteBloqueo: true
+  })
+  // Tras activar, la aplicacion se reinicia sola: es lo que enciende el buscador
+  // de actualizaciones, que solo se configura al arrancar.
+  canal(
+    'licencia:reiniciar',
+    () => {
+      setTimeout(() => {
+        app.relaunch()
+        app.exit(0)
+      }, 400)
+    },
+    { publico: true, duranteBloqueo: true }
+  )
 }

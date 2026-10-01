@@ -215,6 +215,25 @@ function BuscadorMedicamento({
                 <span className="text-[0.8125rem] text-[var(--tinta-suave)]">
                   {[m.concentracion, m.forma].filter(Boolean).join(' · ')}
                 </span>
+                {/* Existencias a la vista al recetar: el doctor sabe si la
+                    clínica puede entregarlo antes de indicarlo. */}
+                {m.controlaInventario && (
+                  <span
+                    className={`ml-auto shrink-0 text-[0.78125rem] font-medium ${
+                      m.existencia <= 0 || m.vencido
+                        ? 'text-red-600 oscuro:text-red-400'
+                        : m.bajoMinimo || m.porVencer
+                          ? 'text-amber-700 oscuro:text-amber-400'
+                          : 'text-[var(--tinta-tenue)]'
+                    }`}
+                  >
+                    {m.vencido
+                      ? 'vencido'
+                      : m.existencia <= 0
+                        ? 'sin existencia'
+                        : `${m.existencia}${m.unidad ? ` ${m.unidad}` : ''} en existencia`}
+                  </span>
+                )}
               </button>
             </li>
           ))}

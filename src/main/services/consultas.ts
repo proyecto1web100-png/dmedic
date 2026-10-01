@@ -79,6 +79,9 @@ function exigirAutoria(id: number): Sesion {
 
 export function actualizar(id: number, entrada: ConsultaInput): void {
   const sesion = exigirAutoria(id)
+  if (repo.obtener(id)?.estado === 'anulada') {
+    throw new Error('Una consulta anulada no puede modificarse. Agréguele una adenda.')
+  }
   const datos = validar(entrada)
   repo.actualizar(id, datos)
   citas.sincronizarDesdeConsulta(

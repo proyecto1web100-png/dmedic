@@ -184,6 +184,43 @@ export const ESTILOS = `
     margin-top: 0.5mm;
   }
 
+  /* ===== Examenes y procedimientos indicados =====
+     La casilla vacia es para el laboratorio: se marca al realizar cada estudio. */
+  .procedimiento {
+    display: flex;
+    gap: 2.5mm;
+    padding: 1.6mm 0;
+    border-bottom: 0.2mm dotted #dfe8ea;
+  }
+  .procedimiento:last-child { border-bottom: none; }
+  .procedimiento .casilla {
+    flex: 0 0 4mm;
+    height: 4mm;
+    margin-top: 0.8mm;
+    border: 0.3mm solid #5b6b7a;
+    border-radius: 0.8mm;
+  }
+  .procedimiento .cuerpo { flex: 1 1 auto; min-width: 0; }
+  .procedimiento .nombre { font-size: 10.5pt; font-weight: 700; line-height: 1.25; }
+  .procedimiento .tipo { font-weight: 500; color: #5b6b7a; font-size: 9pt; }
+  .procedimiento .indicaciones {
+    font-size: 8.5pt;
+    color: #5b6b7a;
+    font-style: italic;
+    margin-top: 0.4mm;
+  }
+
+  /* Folio de los documentos con valor legal: incapacidades y referencias. */
+  .folio {
+    display: flex;
+    align-items: center;
+    gap: 2mm;
+    margin-top: 2mm;
+    font-size: 9pt;
+    color: #6b7c8c;
+  }
+  .folio strong { color: #1f2d3a; letter-spacing: 0.04em; }
+
   /* ===== Tablas ===== */
   table { width: 100%; border-collapse: collapse; }
   table th {

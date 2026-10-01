@@ -4,6 +4,7 @@ import { abrirBaseDatos, cerrarBaseDatos } from './db/conexion'
 import { registrarCanales } from './ipc'
 import * as backups from './services/backups'
 import * as actualizaciones from './services/actualizaciones'
+import * as licencia from './services/licencia'
 
 const esDesarrollo = !app.isPackaged
 
@@ -83,7 +84,17 @@ if (!app.requestSingleInstanceLock()) {
     }
 
     registrarCanales()
-    actualizaciones.configurar()
+    // Mientras el equipo esta en periodo de prueba no se busca ni se instala
+    // nada: una actualizacion reemplazaria esta version por otra y el candado
+    // de las 24 horas se perderia. En cuanto se activa con el codigo, las
+    // actualizaciones vuelven a funcionar solas.
+    const activado = licencia.estaActivado()
+    if (activado) {
+      actualizaciones.configurar()
+      // Antes de abrir la ventana: la pantalla pregunta por las novedades en
+      // cuanto carga, y para entonces ya deben estar resueltas.
+      actualizaciones.prepararNovedades()
+    }
     crearVentana()
 
     try {
@@ -93,7 +104,7 @@ if (!app.requestSingleInstanceLock()) {
       console.error('No se pudo crear el backup diario:', error)
     }
 
-    actualizaciones.buscarAlArrancar()
+    if (activado) actualizaciones.buscarAlArrancar()
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) crearVentana()

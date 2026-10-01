@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron'
 import { exigirPermiso, exigirSesion } from '../security/sesion'
+import { estaBloqueado } from '../services/licencia'
 import type { Permiso, Resultado } from '@shared/types'
 
 interface OpcionesCanal {
@@ -7,6 +8,12 @@ interface OpcionesCanal {
   publico?: boolean
   /** Permiso obligatorio. Se comprueba aqui, no en la interfaz. */
   permiso?: Permiso
+  /**
+   * Sigue respondiendo con el periodo de prueba vencido. Solo lo usan los
+   * canales que la propia pantalla de bloqueo necesita para dibujarse y para
+   * aceptar el codigo de activacion.
+   */
+  duranteBloqueo?: boolean
 }
 
 function mensajeDeError(error: unknown): { error: string; codigo?: string } {
@@ -29,6 +36,13 @@ export function canal<A extends unknown[], T>(
 ): void {
   ipcMain.handle(nombre, async (_evento, ...argumentos): Promise<Resultado<T>> => {
     try {
+      if (!opciones.duranteBloqueo && estaBloqueado()) {
+        const error = new Error(
+          'El periodo de prueba de DMedic terminó. Escriba el código de activación para seguir usando el programa.'
+        ) as Error & { codigo?: string }
+        error.codigo = 'PRUEBA_VENCIDA'
+        throw error
+      }
       if (!opciones.publico) {
         if (opciones.permiso) exigirPermiso(opciones.permiso)
         else exigirSesion()

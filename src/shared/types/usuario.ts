@@ -26,6 +26,12 @@ export type Permiso =
   | 'consultas.editar'
   | 'consultas.anular'
   | 'documentos.generar'
+  | 'documentos.incapacidad'
+  | 'documentos.referencia'
+  | 'expediente.adjuntar'
+  | 'inventario.ver'
+  | 'inventario.gestionar'
+  | 'empresas.gestionar'
   | 'citas.ver'
   | 'citas.gestionar'
   | 'citas.gestionar_todas'
@@ -52,6 +58,12 @@ const PERMISOS_DOCTOR: Permiso[] = [
   'consultas.editar',
   'consultas.anular',
   'documentos.generar',
+  'documentos.incapacidad',
+  'documentos.referencia',
+  'expediente.adjuntar',
+  'inventario.ver',
+  'inventario.gestionar',
+  'empresas.gestionar',
   'citas.ver',
   'citas.gestionar',
   'citas.reportes',
@@ -68,6 +80,10 @@ const PERMISOS_SECRETARIA: Permiso[] = [
   'pacientes.ver',
   'pacientes.registrar',
   'pacientes.editar_contacto',
+  // Entregar medicamento y llevar el convenio de las empresas es trabajo
+  // administrativo: no expone nada del contenido clinico del expediente.
+  'inventario.ver',
+  'empresas.gestionar',
   'citas.ver',
   'citas.gestionar',
   'citas.gestionar_todas',
@@ -95,6 +111,8 @@ export interface Usuario {
   activo: boolean
   debeCambiarPassword: boolean
   creadoEn: string
+  /** Numero de colegiacion: va impreso en incapacidades y referencias. */
+  numeroColegiacion: string | null
 }
 
 /** Lo mínimo que necesita la pantalla de acceso: nunca incluye hashes. */
@@ -109,4 +127,5 @@ export interface UsuarioInput {
   nombre: string
   rol: Rol
   esAdministrador?: boolean
+  numeroColegiacion?: string | null
 }

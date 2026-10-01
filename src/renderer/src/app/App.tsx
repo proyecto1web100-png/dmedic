@@ -14,6 +14,8 @@ import { Expediente } from '../features/expediente/Expediente'
 import { EditorConsulta } from '../features/consultas/EditorConsulta'
 import { Configuracion } from '../features/configuracion/Configuracion'
 import { Agenda } from '../features/agenda/Agenda'
+import { Manual } from '../features/ayuda/Manual'
+import { ProveedorLicencia } from '../features/licencia/Prueba'
 
 function Enrutador(): React.JSX.Element {
   const { estado, cargando } = useSesion()
@@ -89,6 +91,7 @@ function Enrutador(): React.JSX.Element {
             </Protegida>
           }
         />
+        <Route path="manual" element={<Manual />} />
         <Route path="configuracion" element={<Configuracion />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
@@ -115,13 +118,17 @@ function Protegida({
 export function App(): React.JSX.Element {
   return (
     <ProveedorNotificaciones>
-      <ProveedorSesion>
+      {/* Envuelve todo: con la prueba vencida no se llega ni a la pantalla de
+          acceso. El bloqueo efectivo está en el proceso principal. */}
+      <ProveedorLicencia>
+        <ProveedorSesion>
         {/* HashRouter: en producción la app se sirve desde file:// y el router
             de rutas normales no funcionaría. */}
-        <HashRouter>
-          <Enrutador />
-        </HashRouter>
-      </ProveedorSesion>
+          <HashRouter>
+            <Enrutador />
+          </HashRouter>
+        </ProveedorSesion>
+      </ProveedorLicencia>
     </ProveedorNotificaciones>
   )
 }

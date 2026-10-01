@@ -1,6 +1,7 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import {
   BookMarked,
+  BookOpen,
   CalendarDays,
   LayoutDashboard,
   LogOut,
@@ -14,6 +15,7 @@ import {
 import { useSesion } from './Sesion'
 import { api, pedir } from '../lib/api'
 import { useNotificar } from './Notificaciones'
+import { AvisoNovedades } from '../features/configuracion/AvisoNovedades'
 
 import type { Permiso } from '@shared/types'
 
@@ -41,6 +43,7 @@ const ENLACES: {
     exacto: false,
     permiso: 'usuarios.gestionar'
   },
+  { a: '/manual', etiqueta: 'Manual', icono: BookOpen, exacto: false },
   { a: '/configuracion', etiqueta: 'Configuración', icono: Settings, exacto: false }
 ]
 
@@ -139,6 +142,9 @@ export function Layout(): React.JSX.Element {
       <main className="desplazable min-w-0 flex-1">
         <Outlet />
       </main>
+
+      {/* Solo aparece la primera vez que se abre una version nueva. */}
+      <AvisoNovedades />
     </div>
   )
 }

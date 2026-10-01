@@ -1,4 +1,5 @@
 import type { Database } from 'better-sqlite3'
+import { EXPEDIENTE_AMPLIADO } from './migraciones7'
 
 interface Migracion {
   version: number
@@ -338,11 +339,64 @@ ALTER TABLE configuracion_clinica
   CHECK (tamano_receta IN ('carta','media_carta'));
 `
 
+/**
+ * Examenes y procedimientos indicados en consulta. Se guardan como copia dentro
+ * de la consulta —igual que los medicamentos de la receta— para que editar o
+ * retirar un examen del catalogo no altere lo que ya se le indico a un paciente.
+ */
+const EXAMENES_Y_PROCEDIMIENTOS = `
+CREATE TABLE examen (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  nombre      TEXT    NOT NULL,
+  categoria   TEXT    NOT NULL DEFAULT 'laboratorio'
+                CHECK (categoria IN ('laboratorio','imagen','procedimiento','otro')),
+  preparacion TEXT,
+  activo      INTEGER NOT NULL DEFAULT 1,
+  UNIQUE (nombre, categoria)
+);
+CREATE INDEX idx_examen_nombre ON examen(nombre);
+
+CREATE TABLE consulta_procedimiento (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  consulta_id  INTEGER NOT NULL REFERENCES consulta(id) ON DELETE CASCADE,
+  examen_id    INTEGER REFERENCES examen(id),
+  nombre       TEXT    NOT NULL,
+  categoria    TEXT    NOT NULL DEFAULT 'laboratorio'
+                 CHECK (categoria IN ('laboratorio','imagen','procedimiento','otro')),
+  indicaciones TEXT,
+  urgente      INTEGER NOT NULL DEFAULT 0,
+  orden        INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX idx_procedimiento_consulta ON consulta_procedimiento(consulta_id, orden);
+`
+
+/**
+ * Un protocolo del doctor tambien puede incluir los estudios que suele pedir
+ * para ese diagnostico, no solo los medicamentos.
+ */
+const EXAMENES_EN_PROTOCOLOS = `
+CREATE TABLE plantilla_tratamiento_examen (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  plantilla_id INTEGER NOT NULL REFERENCES plantilla_tratamiento(id) ON DELETE CASCADE,
+  examen_id    INTEGER REFERENCES examen(id),
+  nombre       TEXT    NOT NULL,
+  categoria    TEXT    NOT NULL DEFAULT 'laboratorio'
+                 CHECK (categoria IN ('laboratorio','imagen','procedimiento','otro')),
+  indicaciones TEXT,
+  urgente      INTEGER NOT NULL DEFAULT 0,
+  orden        INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX idx_plantilla_examen ON plantilla_tratamiento_examen(plantilla_id, orden);
+`
+
 const MIGRACIONES: Migracion[] = [
   { version: 1, nombre: 'esquema_inicial', sql: ESQUEMA_INICIAL },
   { version: 2, nombre: 'agenda_de_citas', sql: AGENDA },
   { version: 3, nombre: 'usuarios_y_roles', sql: USUARIOS_Y_ROLES },
-  { version: 4, nombre: 'agenda_por_doctor', sql: AGENDA_POR_DOCTOR }
+  { version: 4, nombre: 'agenda_por_doctor', sql: AGENDA_POR_DOCTOR },
+  { version: 5, nombre: 'examenes_y_procedimientos', sql: EXAMENES_Y_PROCEDIMIENTOS },
+  { version: 6, nombre: 'examenes_en_protocolos', sql: EXAMENES_EN_PROTOCOLOS },
+  { version: 7, nombre: 'expediente_ampliado', sql: EXPEDIENTE_AMPLIADO }
 ]
 
 /** Version de esquema que este programa sabe manejar. */

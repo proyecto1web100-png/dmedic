@@ -1,9 +1,28 @@
-import { FileText, Printer } from 'lucide-react'
+import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { Ban, CalendarClock, FilePlus2, FileText, Paperclip, Pencil, Printer, Send } from 'lucide-react'
 import { Boton } from '../../components/ui/Boton'
-import { Insignia } from '../../components/ui/Varios'
+import {
+  FormularioAdjunto,
+  FormularioIncapacidad,
+  FormularioReferencia
+} from './PanelExpediente'
+import { AreaTexto } from '../../components/ui/Campo'
+import { Modal } from '../../components/ui/Modal'
+import { Aviso, Insignia } from '../../components/ui/Varios'
+import { api, mensajeDeError, pedir } from '../../lib/api'
+import { useNotificar } from '../../app/Notificaciones'
+import { useSesion } from '../../app/Sesion'
 import { formatearFechaHora, formatearFechaLarga } from '@shared/lib/fecha'
 import { clasificarImc, evaluarVital } from '@shared/lib/vitales'
-import type { ConsultaCompleta, SignosVitales } from '@shared/types'
+import type { CategoriaExamen, ConsultaCompleta, SignosVitales } from '@shared/types'
+
+const ETIQUETA_CATEGORIA: Record<CategoriaExamen, string> = {
+  laboratorio: 'Laboratorio',
+  imagen: 'Imagen',
+  procedimiento: 'Procedimiento',
+  otro: 'Otro'
+}
 
 const UNIDADES: Partial<Record<keyof SignosVitales, string>> = {
   peso: 'kg',
@@ -28,15 +47,37 @@ const ETIQUETAS: Partial<Record<keyof SignosVitales, string>> = {
 export function VistaConsulta({
   consulta,
   onImprimir,
+  onCambio,
   compacto = false
 }: {
   consulta: ConsultaCompleta
   onImprimir?: (tipo: 'receta' | 'resumen_consulta') => void
+  /** Se invoca tras anular o agregar una adenda, para recargar el expediente. */
+  onCambio?: () => void | Promise<void>
   compacto?: boolean
 }): React.JSX.Element {
+  const { puede } = useSesion()
+  const navegar = useNavigate()
+  const [anulando, setAnulando] = useState(false)
+  const [adendando, setAdendando] = useState(false)
+  const [incapacitando, setIncapacitando] = useState(false)
+  const [refiriendo, setRefiriendo] = useState(false)
+  const [adjuntando, setAdjuntando] = useState(false)
+
+  // El diagnóstico principal de esta consulta se propone en la incapacidad y en
+  // la referencia: es el motivo por el que se emiten.
+  const principal =
+    consulta.diagnosticos.find((d) => d.esPrincipal) ?? consulta.diagnosticos[0] ?? null
+  const diagnosticoSugerido = principal
+    ? { codigo: principal.codigoCie10, descripcion: principal.descripcion }
+    : null
+
   const s = consulta.signos
   const imc = s.imc
   const anulada = consulta.estado === 'anulada'
+  // Las acciones solo tienen sentido en la vista completa del expediente: en el
+  // modo compacto la consulta se muestra como referencia, no para operarla.
+  const conAcciones = Boolean(onCambio) && !compacto
 
   return (
     <article className={anulada ? 'opacity-70' : ''}>
@@ -53,15 +94,78 @@ export function VistaConsulta({
         </div>
         <div className="flex items-center gap-1.5">
           {consulta.editable && <Insignia tono="marca">Editable hoy</Insignia>}
+          {conAcciones && !anulada && consulta.editable && puede('consultas.editar') && (
+            <Boton
+              tamano="sm"
+              variante="fantasma"
+              iconoIzquierda={<Pencil size={14} />}
+              onClick={() =>
+                navegar(`/pacientes/${consulta.pacienteId}/consulta/${consulta.id}`)
+              }
+            >
+              Editar
+            </Boton>
+          )}
+          {conAcciones && puede('consultas.editar') && (
+            <Boton
+              tamano="sm"
+              variante="fantasma"
+              iconoIzquierda={<FilePlus2 size={14} />}
+              onClick={() => setAdendando(true)}
+            >
+              Adenda
+            </Boton>
+          )}
+          {conAcciones && !anulada && puede('consultas.anular') && (
+            <Boton
+              tamano="sm"
+              variante="fantasma"
+              iconoIzquierda={<Ban size={14} />}
+              onClick={() => setAnulando(true)}
+              className="text-red-600 hover:bg-red-50 hover:text-red-700 oscuro:text-red-400 oscuro:hover:bg-red-950/40"
+            >
+              Anular
+            </Boton>
+          )}
+          {conAcciones && !anulada && puede('expediente.adjuntar') && (
+            <Boton
+              tamano="sm"
+              variante="fantasma"
+              iconoIzquierda={<Paperclip size={14} />}
+              onClick={() => setAdjuntando(true)}
+            >
+              Adjuntar
+            </Boton>
+          )}
+          {conAcciones && !anulada && puede('documentos.incapacidad') && (
+            <Boton
+              tamano="sm"
+              variante="fantasma"
+              iconoIzquierda={<CalendarClock size={14} />}
+              onClick={() => setIncapacitando(true)}
+            >
+              Incapacidad
+            </Boton>
+          )}
+          {conAcciones && !anulada && puede('documentos.referencia') && (
+            <Boton
+              tamano="sm"
+              variante="fantasma"
+              iconoIzquierda={<Send size={14} />}
+              onClick={() => setRefiriendo(true)}
+            >
+              Referir
+            </Boton>
+          )}
           {onImprimir && !anulada && (
             <>
-              {consulta.medicamentos.length > 0 && (
+              {(consulta.medicamentos.length > 0 || consulta.procedimientos.length > 0) && (
                 <Boton
                   tamano="sm"
                   iconoIzquierda={<Printer size={14} />}
                   onClick={() => onImprimir('receta')}
                 >
-                  Receta
+                  {consulta.medicamentos.length > 0 ? 'Receta' : 'Orden de exámenes'}
                 </Boton>
               )}
               <Boton
@@ -180,6 +284,36 @@ export function VistaConsulta({
         </div>
       )}
 
+      {consulta.procedimientos.length > 0 && (
+        <div className="mb-3">
+          <Titulo>Exámenes y procedimientos</Titulo>
+          <ul className="flex flex-col gap-1.5">
+            {consulta.procedimientos.map((p, indice) => (
+              <li
+                key={p.id ?? indice}
+                className="border-l-2 border-marca-400 pl-2.5 text-[0.9375rem] leading-snug"
+              >
+                <span className="font-medium text-[var(--tinta)]">{p.nombre}</span>
+                <span className="text-[var(--tinta-tenue)]">
+                  {' '}
+                  ({ETIQUETA_CATEGORIA[p.categoria]})
+                </span>
+                {p.urgente && (
+                  <span className="ml-1.5 text-[0.75rem] font-semibold uppercase tracking-wide text-red-600 oscuro:text-red-400">
+                    Urgente
+                  </span>
+                )}
+                {p.indicaciones && (
+                  <p className="text-[0.8125rem] italic text-[var(--tinta-tenue)]">
+                    {p.indicaciones}
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {!compacto && <Campo titulo="Observaciones" texto={consulta.observaciones} />}
       <Campo titulo="Recomendaciones" texto={consulta.recomendaciones} />
 
@@ -212,7 +346,208 @@ export function VistaConsulta({
           </ul>
         </div>
       )}
+
+      {conAcciones && (
+        <>
+          <ModalAdenda
+            abierto={adendando}
+            consultaId={consulta.id}
+            onCerrar={() => setAdendando(false)}
+            onGuardado={async () => {
+              setAdendando(false)
+              await onCambio?.()
+            }}
+          />
+          <ModalAnular
+            abierto={anulando}
+            consultaId={consulta.id}
+            fecha={consulta.fecha}
+            onCerrar={() => setAnulando(false)}
+            onAnulada={async () => {
+              setAnulando(false)
+              await onCambio?.()
+            }}
+          />
+          <FormularioIncapacidad
+            abierto={incapacitando}
+            pacienteId={consulta.pacienteId}
+            consultaId={consulta.id}
+            diagnosticoSugerido={diagnosticoSugerido}
+            onCerrar={() => setIncapacitando(false)}
+            onGuardado={() => onCambio?.()}
+          />
+          <FormularioReferencia
+            abierto={refiriendo}
+            pacienteId={consulta.pacienteId}
+            consultaId={consulta.id}
+            diagnosticoSugerido={diagnosticoSugerido}
+            resumenSugerido={[consulta.motivo, consulta.sintomas, consulta.exploracion]
+              .filter(Boolean)
+              .join('\n\n')}
+            onCerrar={() => setRefiriendo(false)}
+            onGuardado={() => onCambio?.()}
+          />
+          <FormularioAdjunto
+            abierto={adjuntando}
+            pacienteId={consulta.pacienteId}
+            consultaId={consulta.id}
+            onCerrar={() => setAdjuntando(false)}
+            onGuardado={() => onCambio?.()}
+          />
+        </>
+      )}
     </article>
+  )
+}
+
+/**
+ * Una consulta que ya no es editable no se reescribe: se le agrega una adenda,
+ * fechada y aparte. Es la forma de corregir o completar un expediente sin
+ * borrar lo que se escribio en su momento.
+ */
+function ModalAdenda({
+  abierto,
+  consultaId,
+  onCerrar,
+  onGuardado
+}: {
+  abierto: boolean
+  consultaId: number
+  onCerrar: () => void
+  onGuardado: () => void | Promise<void>
+}): React.JSX.Element {
+  const notificar = useNotificar()
+  const [texto, setTexto] = useState('')
+  const [guardando, setGuardando] = useState(false)
+
+  async function guardar(): Promise<void> {
+    setGuardando(true)
+    try {
+      await pedir(api.consultas.agregarAdenda(consultaId, texto))
+      notificar.exito('Adenda agregada')
+      setTexto('')
+      await onGuardado()
+    } catch (error) {
+      notificar.error(mensajeDeError(error))
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  return (
+    <Modal
+      abierto={abierto}
+      titulo="Agregar una adenda"
+      ancho="sm"
+      onCerrar={onCerrar}
+      pie={
+        <>
+          <Boton variante="fantasma" onClick={onCerrar}>
+            Cancelar
+          </Boton>
+          <Boton
+            variante="primario"
+            cargando={guardando}
+            disabled={texto.trim().length < 3}
+            onClick={() => void guardar()}
+          >
+            Agregar adenda
+          </Boton>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-3.5">
+        <Aviso tono="info">
+          La adenda no modifica lo ya escrito: se agrega al final de la consulta con su fecha y
+          hora, y queda visible para quien la lea despues.
+        </Aviso>
+        <AreaTexto
+          etiqueta="Texto de la adenda"
+          rows={5}
+          autoFocus
+          value={texto}
+          onChange={(e) => setTexto(e.target.value)}
+          placeholder="Resultado de laboratorio recibido, correccion de la dosis indicada..."
+        />
+      </div>
+    </Modal>
+  )
+}
+
+/**
+ * Anular deja la consulta a la vista, marcada y con su motivo. No borra nada:
+ * un expediente clinico registra tambien los errores y por que se corrigieron.
+ */
+function ModalAnular({
+  abierto,
+  consultaId,
+  fecha,
+  onCerrar,
+  onAnulada
+}: {
+  abierto: boolean
+  consultaId: number
+  fecha: string
+  onCerrar: () => void
+  onAnulada: () => void | Promise<void>
+}): React.JSX.Element {
+  const notificar = useNotificar()
+  const [motivo, setMotivo] = useState('')
+  const [anulando, setAnulando] = useState(false)
+
+  async function anular(): Promise<void> {
+    setAnulando(true)
+    try {
+      await pedir(api.consultas.anular(consultaId, motivo))
+      notificar.exito('Consulta anulada')
+      setMotivo('')
+      await onAnulada()
+    } catch (error) {
+      notificar.error(mensajeDeError(error))
+    } finally {
+      setAnulando(false)
+    }
+  }
+
+  return (
+    <Modal
+      abierto={abierto}
+      titulo="Anular consulta"
+      descripcion={formatearFechaLarga(fecha)}
+      ancho="sm"
+      onCerrar={onCerrar}
+      pie={
+        <>
+          <Boton variante="fantasma" onClick={onCerrar}>
+            Cancelar
+          </Boton>
+          <Boton
+            variante="peligro"
+            cargando={anulando}
+            disabled={motivo.trim().length < 5}
+            onClick={() => void anular()}
+          >
+            Anular consulta
+          </Boton>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-3.5">
+        <Aviso tono="alerta">
+          La consulta no se borra: queda en el historial marcada como anulada, con el motivo a la
+          vista, y deja de poder imprimirse. Anular no se puede deshacer desde la aplicacion.
+        </Aviso>
+        <AreaTexto
+          etiqueta="Motivo de la anulacion"
+          rows={3}
+          autoFocus
+          value={motivo}
+          onChange={(e) => setMotivo(e.target.value)}
+          placeholder="Registrada en el paciente equivocado, duplicada por error..."
+          ayuda="Minimo 5 caracteres. Queda registrado en la auditoria."
+        />
+      </div>
+    </Modal>
   )
 }
 

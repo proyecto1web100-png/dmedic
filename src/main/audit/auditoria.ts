@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { db } from '../db/conexion'
 import { directorioLogs } from '../db/rutas'
 import { sesionActual } from '../security/sesion'
+import type { EntradaAuditoriaPublica, FiltroAuditoria } from '@shared/types'
 
 export type AccionAuditada =
   | 'sesion.inicio'
@@ -28,6 +29,22 @@ export type AccionAuditada =
   | 'usuario.reactivado'
   | 'usuario.password_reiniciada'
   | 'documento.impreso'
+  | 'adjunto.agregado'
+  | 'adjunto.editado'
+  | 'adjunto.eliminado'
+  | 'incapacidad.creada'
+  | 'incapacidad.anulada'
+  | 'referencia.creada'
+  | 'referencia.anulada'
+  | 'medicacion_cronica.agregada'
+  | 'medicacion_cronica.suspendida'
+  | 'medicacion_cronica.reactivada'
+  | 'medicacion_cronica.eliminada'
+  | 'empresa.creada'
+  | 'empresa.editada'
+  | 'empresa.desactivada'
+  | 'empresa.reactivada'
+  | 'inventario.movimiento'
   | 'backup.creado'
   | 'backup.restaurado'
 
@@ -83,4 +100,59 @@ export function auditar(entrada: EntradaAuditoria): void {
   } catch (error) {
     console.error('No se pudo escribir el archivo de auditoría:', error)
   }
+}
+
+/**
+ * Lectura del registro. Solo la usa el administrador: el valor de una auditoria
+ * esta en poder revisarla, no unicamente en escribirla.
+ */
+export function listar(filtro: FiltroAuditoria = {}): EntradaAuditoriaPublica[] {
+  const condiciones: string[] = []
+  const parametros: (string | number)[] = []
+
+  const texto = filtro.texto?.trim()
+  if (texto) {
+    condiciones.push('(accion LIKE ? OR detalle LIKE ? OR usuario_nombre LIKE ?)')
+    const patron = `%${texto}%`
+    parametros.push(patron, patron, patron)
+  }
+  if (filtro.desde) {
+    condiciones.push('fecha >= ?')
+    parametros.push(filtro.desde)
+  }
+  if (filtro.hasta) {
+    // La fecha llega como dia suelto; se incluye el dia entero.
+    condiciones.push('fecha <= ?')
+    parametros.push(`${filtro.hasta}T23:59:59.999Z`)
+  }
+
+  const donde = condiciones.length > 0 ? `WHERE ${condiciones.join(' AND ')}` : ''
+  const limite = Math.min(Math.max(filtro.limite ?? 200, 1), 1000)
+
+  const filas = db()
+    .prepare(
+      `SELECT id, fecha, accion, entidad, entidad_id, detalle, usuario_nombre
+         FROM auditoria ${donde}
+        ORDER BY fecha DESC, id DESC
+        LIMIT ?`
+    )
+    .all(...parametros, limite) as {
+    id: number
+    fecha: string
+    accion: string
+    entidad: string | null
+    entidad_id: number | null
+    detalle: string | null
+    usuario_nombre: string | null
+  }[]
+
+  return filas.map((f) => ({
+    id: f.id,
+    fecha: f.fecha,
+    accion: f.accion,
+    entidad: f.entidad,
+    entidadId: f.entidad_id,
+    detalle: f.detalle,
+    usuarioNombre: f.usuario_nombre
+  }))
 }

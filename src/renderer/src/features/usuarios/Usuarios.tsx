@@ -173,6 +173,7 @@ function FormularioUsuario({
   const [nombre, setNombre] = useState(usuario?.nombre ?? '')
   const [rol, setRol] = useState<Rol>(usuario?.rol ?? 'doctor')
   const [esAdministrador, setEsAdministrador] = useState(usuario?.esAdministrador ?? false)
+  const [numeroColegiacion, setNumeroColegiacion] = useState(usuario?.numeroColegiacion ?? '')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [guardando, setGuardando] = useState(false)
@@ -183,7 +184,12 @@ function FormularioUsuario({
     setError(null)
     setGuardando(true)
     try {
-      const datos: UsuarioInput = { nombre: nombre.trim(), rol, esAdministrador }
+      const datos: UsuarioInput = {
+        nombre: nombre.trim(),
+        rol,
+        esAdministrador,
+        numeroColegiacion: numeroColegiacion.trim() || null
+      }
       if (editando && usuario) {
         await pedir(api.usuarios.actualizar(usuario.id, datos))
         notificar.exito('Usuario actualizado')
@@ -241,6 +247,16 @@ function FormularioUsuario({
           opciones={ROLES.map((r) => ({ valor: r.valor, etiqueta: r.etiqueta }))}
           ayuda={ROLES.find((r) => r.valor === rol)?.descripcion}
         />
+
+        {rol === 'doctor' && (
+          <Entrada
+            etiqueta="Número de colegiación"
+            placeholder="12345"
+            ayuda="Va impreso en las incapacidades y referencias que firme."
+            value={numeroColegiacion}
+            onChange={(e) => setNumeroColegiacion(e.target.value)}
+          />
+        )}
 
         {!editando && (
           <Entrada

@@ -46,6 +46,23 @@ export const contactoEmergenciaSchema = z.object({
   parentesco: nombreOpcional
 })
 
+const alergiaInicialSchema = z.object({
+  sustancia: z.string().trim().min(2, 'Sustancia requerida').max(120),
+  reaccion: nombreOpcional,
+  gravedad: z.enum(['leve', 'moderada', 'grave'])
+})
+
+const antecedenteInicialSchema = z.object({
+  tipo: z.enum([
+    'personal_patologico',
+    'familiar',
+    'quirurgico',
+    'habitos',
+    'gineco_obstetrico'
+  ]),
+  descripcion: z.string().trim().min(2, 'Descripción requerida').max(1000)
+})
+
 export const pacienteInputSchema = z
   .object({
     primerNombre: nombreRequerido,
@@ -94,7 +111,28 @@ export const pacienteInputSchema = z
       .nullish()
       .transform((v) => v ?? null),
     responsableParentesco: nombreOpcional,
-    contactos: z.array(contactoEmergenciaSchema).max(3, 'Máximo 3 contactos').default([])
+    nivelEducativo: z
+      .enum(['ninguno', 'primaria', 'secundaria', 'tecnico', 'universitario', 'postgrado'])
+      .nullish()
+      .transform((v) => v ?? null),
+    ocupacion: nombreOpcional,
+    estadoCivil: z
+      .enum(['soltero', 'casado', 'union_libre', 'divorciado', 'viudo'])
+      .nullish()
+      .transform((v) => v ?? null),
+    historiador: nombreOpcional,
+    historiadorParentesco: nombreOpcional,
+    empresaId: z
+      .number()
+      .int()
+      .positive()
+      .nullish()
+      .transform((v) => v ?? null),
+    codigoEmpleado: nombreOpcional,
+    contactos: z.array(contactoEmergenciaSchema).max(3, 'Máximo 3 contactos').default([]),
+    // Historia inicial: solo se toma en cuenta al crear el expediente.
+    alergiasIniciales: z.array(alergiaInicialSchema).max(20).default([]),
+    antecedentesIniciales: z.array(antecedenteInicialSchema).max(30).default([])
   })
   .refine((datos) => datos.numeroIdentidad !== null || datos.responsableId !== null, {
     message: 'Indique el número de identidad o vincule un responsable',

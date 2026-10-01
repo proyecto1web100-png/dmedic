@@ -75,6 +75,7 @@ async function ejecutar(): Promise<void> {
   const documentos = await import('./services/documentos')
   const backups = await import('./services/backups')
   const catalogo = await import('./repositories/catalogo')
+  const auditoria = await import('./audit/auditoria')
   const { hoyIso } = await import('@shared/lib/fecha')
 
   abrirBaseDatos()
@@ -114,6 +115,15 @@ async function ejecutar(): Promise<void> {
     catalogo.buscarCie10('hipertensión').some((c) => c.codigo === 'I10')
   )
   comprobar('el catálogo de medicamentos está cargado', catalogo.buscarMedicamentos('').length > 0)
+  comprobar('el catálogo de exámenes está cargado', catalogo.buscarExamenes('').length > 0)
+  comprobar(
+    'busca exámenes por nombre',
+    catalogo.buscarExamenes('hemograma').some((e) => e.nombre.startsWith('Hemograma'))
+  )
+  comprobar(
+    'el examen de laboratorio trae su preparación habitual',
+    catalogo.buscarExamenes('Glucosa en ayunas')[0]?.preparacion === 'Ayuno de 8 horas'
+  )
 
   grupo('Pacientes')
   const idPaciente = pacientes.crear({
@@ -182,6 +192,24 @@ async function ejecutar(): Promise<void> {
   comprobar('permite un menor sin identidad vinculado a un responsable', idMenor > 0)
   comprobar(
     'el expediente del menor muestra a su responsable',
+    pacientes.expediente(idMenor).responsable?.id === idPaciente
+  )
+  await debeFallar('rechaza un responsable que no existe', () =>
+    pacientes.actualizar(idMenor, {
+      ...pacientes.expediente(idMenor).paciente,
+      responsableId: 999_999,
+      contactos: []
+    })
+  )
+  await debeFallar('nadie puede ser su propio responsable', () =>
+    pacientes.actualizar(idMenor, {
+      ...pacientes.expediente(idMenor).paciente,
+      responsableId: idMenor,
+      contactos: []
+    })
+  )
+  comprobar(
+    'el vínculo sobrevive a los intentos rechazados',
     pacientes.expediente(idMenor).responsable?.id === idPaciente
   )
 
@@ -405,6 +433,60 @@ async function ejecutar(): Promise<void> {
     'la consulta anulada no cuenta como última',
     consultas.ultima(idPaciente)?.id === idConsulta
   )
+  await debeFallar('no permite editar una consulta anulada', () =>
+    consultas.actualizar(idAnulable, {
+      pacienteId: idPaciente,
+      motivo: 'Intento de reescribir lo anulado',
+      sinProximaCita: true,
+      signos: consulta.signos,
+      diagnosticos: [],
+      medicamentos: []
+    })
+  )
+  consultas.agregarAdenda(idAnulable, 'Se explica al paciente el motivo de la anulación.')
+  comprobar(
+    'una consulta anulada sí admite adendas',
+    consultas.obtener(idAnulable).adendas.length === 1
+  )
+
+  grupo('Registro de auditoría')
+  const movimientos = auditoria.listar({ limite: 500 })
+  comprobar('el registro tiene movimientos', movimientos.length > 0)
+  comprobar(
+    'registra la anulación con su motivo',
+    movimientos.some(
+      (m) => m.accion === 'consulta.anulada' && (m.detalle ?? '').includes('paciente equivocado')
+    )
+  )
+  // Un intento fallido ocurre antes de que exista sesion, asi que no tiene
+  // autor: lleva en el detalle el usuario al que se intento entrar. Todo lo
+  // demas, que ya toca datos, debe quedar atribuido.
+  comprobar(
+    'todo movimiento con sesión queda atribuido a su autor',
+    movimientos
+      .filter((m) => m.accion !== 'sesion.inicio_fallido')
+      .every((m) => m.usuarioNombre !== null)
+  )
+  comprobar(
+    'el intento fallido identifica al usuario en el detalle',
+    movimientos
+      .filter((m) => m.accion === 'sesion.inicio_fallido')
+      .every((m) => (m.detalle ?? '').length > 0)
+  )
+  comprobar(
+    'el filtro de texto acota la búsqueda',
+    auditoria.listar({ texto: 'consulta.anulada' }).every((m) => m.accion === 'consulta.anulada')
+  )
+  comprobar(
+    'el límite se respeta',
+    auditoria.listar({ limite: 3 }).length <= 3
+  )
+  comprobar(
+    'los movimientos llegan del más reciente al más antiguo',
+    movimientos.every(
+      (m, i) => i === 0 || movimientos[i - 1].fecha >= m.fecha
+    )
+  )
 
   grupo('Documentos PDF')
   const receta = await documentos.generarDocumento(idConsulta, 'receta')
@@ -424,8 +506,145 @@ async function ejecutar(): Promise<void> {
     'los documentos quedan registrados en el expediente',
     documentos.documentosDePaciente(idPaciente).length === 2
   )
-  await debeFallar('no genera receta sin medicamentos', () =>
+  await debeFallar('no genera receta sin medicamentos ni exámenes', () =>
     documentos.generarDocumento(idAnulable, 'receta')
+  )
+
+  grupo('Exámenes y procedimientos indicados')
+  const idConsultaExamenes = consultas.crear({
+    pacienteId: idPaciente,
+    motivo: 'Control anual sin síntomas',
+    sinProximaCita: true,
+    signos: consulta.signos,
+    diagnosticos: [],
+    medicamentos: [],
+    procedimientos: [
+      {
+        examenId: null,
+        nombre: 'Hemograma completo',
+        categoria: 'laboratorio',
+        indicaciones: null,
+        urgente: false
+      },
+      {
+        examenId: null,
+        nombre: 'Glucosa en ayunas',
+        categoria: 'laboratorio',
+        indicaciones: 'Ayuno de 8 horas',
+        urgente: true
+      },
+      {
+        examenId: null,
+        nombre: 'Radiografía de tórax',
+        categoria: 'imagen',
+        indicaciones: null,
+        urgente: false
+      }
+    ]
+  })
+
+  const conExamenes = consultas.obtener(idConsultaExamenes)
+  comprobar('guarda los exámenes indicados', conExamenes.procedimientos.length === 3)
+  comprobar(
+    'conserva el orden en que se indicaron',
+    conExamenes.procedimientos[0].nombre === 'Hemograma completo' &&
+      conExamenes.procedimientos[2].nombre === 'Radiografía de tórax'
+  )
+  comprobar('guarda la marca de urgente', conExamenes.procedimientos[1].urgente === true)
+  comprobar(
+    'guarda la preparación del examen',
+    conExamenes.procedimientos[1].indicaciones === 'Ayuno de 8 horas'
+  )
+  comprobar('guarda la categoría del estudio', conExamenes.procedimientos[2].categoria === 'imagen')
+
+  await debeFallar('rechaza un examen sin nombre', () =>
+    consultas.crear({
+      pacienteId: idPaciente,
+      motivo: 'Control de rutina',
+      sinProximaCita: true,
+      signos: consulta.signos,
+      diagnosticos: [],
+      medicamentos: [],
+      procedimientos: [
+        { examenId: null, nombre: '', categoria: 'laboratorio', indicaciones: null, urgente: false }
+      ]
+    })
+  )
+
+  comprobar(
+    'el historial cuenta los exámenes de cada consulta',
+    consultas.historial(idPaciente).find((c) => c.id === idConsultaExamenes)
+      ?.totalProcedimientos === 3
+  )
+  comprobar(
+    'el historial encuentra la consulta buscando el nombre del examen',
+    consultas
+      .historial(idPaciente, { texto: 'Radiografía' })
+      .some((c) => c.id === idConsultaExamenes)
+  )
+
+  // Editar la consulta debe reemplazar la lista completa, no acumularla.
+  consultas.actualizar(idConsultaExamenes, {
+    pacienteId: idPaciente,
+    motivo: 'Control anual sin síntomas',
+    sinProximaCita: true,
+    signos: consulta.signos,
+    diagnosticos: [],
+    medicamentos: [],
+    procedimientos: [
+      {
+        examenId: null,
+        nombre: 'Hemograma completo',
+        categoria: 'laboratorio',
+        indicaciones: null,
+        urgente: false
+      }
+    ]
+  })
+  comprobar(
+    'al editar, los exámenes se reemplazan sin duplicarse',
+    consultas.obtener(idConsultaExamenes).procedimientos.length === 1
+  )
+
+  const orden = await documentos.generarDocumento(idConsultaExamenes, 'receta')
+  comprobar('imprime la consulta que solo indica exámenes', existsSync(orden.ruta))
+  comprobar('sin medicamentos, el documento es una orden de exámenes', orden.ruta.includes('Orden'))
+  comprobar('la orden de exámenes sale en tamaño carta exacto', esCarta(orden.ruta))
+
+  const resumenExamenes = await documentos.generarDocumento(
+    idConsultaExamenes,
+    'resumen_consulta'
+  )
+  comprobar('el resumen de esa consulta también se genera', existsSync(resumenExamenes.ruta))
+  comprobar('el resumen con exámenes sale en carta', esCarta(resumenExamenes.ruta))
+
+  const idExamenPropio = catalogo.crearExamen({
+    nombre: 'Perfil de la clínica',
+    categoria: 'laboratorio',
+    preparacion: 'Ayuno de 6 horas'
+  })
+  comprobar('crea un examen propio de la clínica', idExamenPropio > 0)
+  comprobar(
+    'el examen propio aparece en el buscador',
+    catalogo.buscarExamenes('Perfil de la clínica').length === 1
+  )
+  catalogo.actualizarExamen(idExamenPropio, {
+    nombre: 'Perfil de la clínica',
+    categoria: 'laboratorio',
+    preparacion: 'Ayuno de 10 horas'
+  })
+  comprobar(
+    'actualiza la preparación del examen',
+    catalogo.buscarExamenes('Perfil de la clínica')[0]?.preparacion === 'Ayuno de 10 horas'
+  )
+  catalogo.desactivarExamen(idExamenPropio)
+  comprobar(
+    'un examen retirado deja de ofrecerse',
+    catalogo.buscarExamenes('Perfil de la clínica').length === 0
+  )
+  comprobar(
+    'pero sigue existiendo en el catálogo completo',
+    catalogo.listarExamenes().some((e) => e.id === idExamenPropio && !e.activo)
   )
 
   grupo('Agenda de citas')
@@ -592,10 +811,10 @@ async function ejecutar(): Promise<void> {
 
   grupo('Dashboard')
   const panel = consultas.dashboard()
-  // Activas de hoy: la inicial, la de control y la iniciada desde la agenda.
-  // La cuarta está anulada y no debe contarse.
+  // Activas de hoy: la inicial, la de exámenes, la de control y la iniciada
+  // desde la agenda. La quinta está anulada y no debe contarse.
   comprobar('cuenta los pacientes activos', panel.totalPacientes === 2)
-  comprobar('cuenta solo las consultas activas de hoy', panel.consultasHoy === 3)
+  comprobar('cuenta solo las consultas activas de hoy', panel.consultasHoy === 4)
   comprobar('cuenta las citas agendadas de hoy', panel.citasHoy === 0)
   comprobar('lista los pacientes atendidos', panel.ultimosAtendidos.length > 0)
 
@@ -619,7 +838,7 @@ async function ejecutar(): Promise<void> {
   comprobar('la restauración revierte al estado del backup', pacientes.buscar('').length === 2)
   comprobar(
     'los datos previos al backup siguen intactos',
-    consultas.historial(idPaciente).length === 4
+    consultas.historial(idPaciente).length === 5
   )
   await debeFallar('rechaza restaurar un archivo inexistente', () =>
     backups.restaurar(join(carpetaTemporal, 'no-existe.db'))
@@ -898,19 +1117,76 @@ async function ejecutar(): Promise<void> {
         via: 'Oral',
         indicaciones: null
       }
+    ],
+    examenes: [
+      {
+        examenId: null,
+        nombre: 'Hemograma completo',
+        categoria: 'laboratorio',
+        indicaciones: null,
+        urgente: false
+      },
+      {
+        examenId: null,
+        nombre: 'Cultivo faríngeo',
+        categoria: 'laboratorio',
+        indicaciones: 'Antes de iniciar antibiótico',
+        urgente: true
+      }
     ]
   })
   comprobar('guarda un protocolo de tratamiento', idPlantilla > 0)
   const plantillas = catalogo.plantillasPorCie10('J02.9')
   comprobar('el protocolo se ofrece para su diagnóstico', plantillas.length === 1)
   comprobar('el protocolo conserva sus medicamentos', plantillas[0].items.length === 1)
+  comprobar('el protocolo conserva sus exámenes', plantillas[0].examenes.length === 2)
+  comprobar(
+    'los exámenes del protocolo mantienen su orden',
+    plantillas[0].examenes[0].nombre === 'Hemograma completo'
+  )
+  comprobar('el protocolo conserva la marca de urgente', plantillas[0].examenes[1].urgente === true)
+  comprobar(
+    'el protocolo conserva la preparación del examen',
+    plantillas[0].examenes[1].indicaciones === 'Antes de iniciar antibiótico'
+  )
   comprobar(
     'no se ofrece para un diagnóstico distinto',
     catalogo.plantillasPorCie10('I10').length === 0
   )
 
+  // Editar un protocolo reemplaza sus examenes, no los acumula.
+  catalogo.guardarPlantilla({
+    id: idPlantilla,
+    codigoCie10: 'J02.9',
+    nombre: 'Faringitis bacteriana — adulto',
+    tratamiento: 'Reposo relativo e hidratación abundante.',
+    recomendaciones: 'Volver si la fiebre persiste 48 horas.',
+    items: [],
+    examenes: [
+      {
+        examenId: null,
+        nombre: 'Hemograma completo',
+        categoria: 'laboratorio',
+        indicaciones: null,
+        urgente: false
+      }
+    ]
+  })
+  comprobar(
+    'al editar, los exámenes del protocolo se reemplazan',
+    catalogo.plantillasPorCie10('J02.9')[0].examenes.length === 1
+  )
+
   catalogo.eliminarPlantilla(idPlantilla)
   comprobar('elimina el protocolo', catalogo.plantillasPorCie10('J02.9').length === 0)
+  comprobar(
+    'al eliminar el protocolo no quedan sus exámenes huérfanos',
+    (
+      dbActual()
+        .prepare('SELECT COUNT(*) AS total FROM plantilla_tratamiento_examen WHERE plantilla_id = ?')
+        .get(idPlantilla) as { total: number }
+    ).total === 0
+  )
 
   await debeFallar('no elimina un diagnóstico en uso', () => catalogo.eliminarCie10('J02.9'))
   catalogo.eliminarCie10('LOC-01')
@@ -957,13 +1233,98 @@ async function ejecutar(): Promise<void> {
   abrirBaseDatos()
   comprobar('vuelve a abrir con normalidad tras reparar la versión', pacientes.buscar('').length > 0)
 
+  grupo('Notas de la versión')
+  {
+    const { textoDeNotas } = await import('./services/actualizaciones')
+
+    // Tal como las entrega GitHub: el cuerpo del release convertido a HTML.
+    comprobar(
+      'convierte el HTML de GitHub en texto legible',
+      textoDeNotas('<p>Nueva Guia de Uso<br>\nOptimizaciones Basicas<br>\nMejoras de Rendimiento</p>') ===
+        'Nueva Guia de Uso\nOptimizaciones Basicas\nMejoras de Rendimiento'
+    )
+    comprobar(
+      'no deja ninguna etiqueta a la vista',
+      !(textoDeNotas('<p>Uno<br><strong>Dos</strong></p>') ?? '').includes('<')
+    )
+    comprobar(
+      'una lista se sigue leyendo como lista',
+      textoDeNotas('<ul><li>Uno</li><li>Dos</li></ul>') === '• Uno\n• Dos'
+    )
+    comprobar(
+      'resuelve las entidades',
+      textoDeNotas('<p>Recetas &amp; ex&#225;menes</p>') === 'Recetas & exámenes'
+    )
+    comprobar(
+      'no decodifica dos veces',
+      textoDeNotas('<p>&amp;lt;etiqueta&amp;gt;</p>') === '&lt;etiqueta&gt;'
+    )
+    comprobar(
+      'el texto plano pasa intacto',
+      textoDeNotas('Notas escritas sin formato') === 'Notas escritas sin formato'
+    )
+    comprobar('unas notas vacías no son notas', textoDeNotas('<p></p>') === null)
+    comprobar('sin notas devuelve nulo', textoDeNotas(undefined) === null)
+  }
+
+  grupo('Aviso de versión nueva')
+  {
+    const actualizaciones = await import('./services/actualizaciones')
+    const { writeFileSync, existsSync: hayArchivo } = await import('node:fs')
+    const rutaVersion = join(carpetaTemporal, 'version-vista.json')
+
+    // Instalacion nueva: no hay nada que anunciar, pero queda anotada la version.
+    actualizaciones.prepararNovedades()
+    comprobar('una instalación nueva no muestra novedades', actualizaciones.obtenerNovedades() === null)
+    comprobar('anota la versión vista al instalar', hayArchivo(rutaVersion))
+
+    // Se simula haber venido de una version anterior, con sus notas guardadas.
+    const notas = 'Impresión en carta y agenda por doctor.'
+    writeFileSync(
+      rutaVersion,
+      JSON.stringify({
+        ultimaVersionVista: '0.0.1',
+        notasDescargadas: { version: app.getVersion(), notas }
+      }),
+      'utf8'
+    )
+    actualizaciones.prepararNovedades()
+    const novedades = actualizaciones.obtenerNovedades()
+    comprobar('anuncia la versión nueva tras actualizar', novedades?.version === app.getVersion())
+    comprobar('muestra las notas escritas al publicar', novedades?.notas === notas)
+
+    actualizaciones.marcarNovedadesVistas()
+    comprobar('deja de anunciarla una vez leída', actualizaciones.obtenerNovedades() === null)
+    actualizaciones.prepararNovedades()
+    comprobar(
+      'no vuelve a anunciarla al siguiente arranque',
+      actualizaciones.obtenerNovedades() === null
+    )
+
+    // Notas de otra version: se anuncia el cambio, sin atribuirle un contenido ajeno.
+    writeFileSync(
+      rutaVersion,
+      JSON.stringify({
+        ultimaVersionVista: '0.0.1',
+        notasDescargadas: { version: '9.9.9', notas: 'Notas de otra versión' }
+      }),
+      'utf8'
+    )
+    actualizaciones.prepararNovedades()
+    comprobar(
+      'no muestra notas que no son de esta versión',
+      actualizaciones.obtenerNovedades()?.notas === null
+    )
+    actualizaciones.marcarNovedadesVistas()
+  }
+
   grupo('Persistencia entre reinicios')
   cerrarBaseDatos()
   abrirBaseDatos()
   comprobar('los pacientes sobreviven al reinicio', pacientes.buscar('Pérez').length === 2)
   comprobar(
     'las consultas sobreviven al reinicio',
-    consultas.historial(idPaciente).length === 5
+    consultas.historial(idPaciente).length === 6
   )
   comprobar(
     'las alergias sobreviven al reinicio',
@@ -1048,7 +1409,7 @@ async function ejecutar(): Promise<void> {
   )
   comprobar(
     'las consultas sobreviven a la actualización',
-    consultas.historial(idPaciente).length === 5
+    consultas.historial(idPaciente).length === 6
   )
   comprobar('las citas sobreviven a la actualización', citas.dePaciente(idPaciente).length > 0)
   comprobar(

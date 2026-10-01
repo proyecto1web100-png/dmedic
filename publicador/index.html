@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<title>Publicador DMedic</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 28px 32px;
+    font-family: "Segoe UI", system-ui, sans-serif;
+    background: #0f172a; color: #e2e8f0;
+  }
+  h1 { font-size: 19px; margin: 0 0 2px; font-weight: 600; }
+  .sub { color: #94a3b8; font-size: 13px; margin-bottom: 20px; }
+  label { display: block; font-size: 13px; color: #cbd5e1; margin: 0 0 6px; }
+  input, textarea {
+    width: 100%; padding: 10px 12px; border-radius: 8px;
+    border: 1px solid #334155; background: #1e293b; color: #f1f5f9;
+    font-family: inherit; font-size: 14px;
+  }
+  input:focus, textarea:focus { outline: none; border-color: #38bdf8; }
+  textarea { resize: vertical; min-height: 96px; }
+  .campo { margin-bottom: 18px; }
+  .fila { display: flex; gap: 16px; align-items: flex-end; }
+  .fila .campo { flex: 1; margin-bottom: 0; }
+  .actual {
+    padding: 10px 12px; border-radius: 8px; background: #1e293b;
+    border: 1px solid #334155; color: #94a3b8; font-size: 14px;
+  }
+  button {
+    margin-top: 22px; width: 100%; padding: 13px;
+    border: 0; border-radius: 8px; background: #0284c7; color: white;
+    font-size: 15px; font-weight: 600; cursor: pointer;
+  }
+  button:hover:not(:disabled) { background: #0369a1; }
+  button:disabled { background: #334155; color: #64748b; cursor: default; }
+  #consola {
+    margin-top: 22px; display: none; max-height: 260px; overflow-y: auto;
+    padding: 12px 14px; border-radius: 8px; background: #020617;
+    border: 1px solid #1e293b; font-family: Consolas, monospace;
+    font-size: 12px; line-height: 1.55; white-space: pre-wrap;
+  }
+  #consola div { color: #94a3b8; }
+  #consola div.error { color: #f87171; }
+  #consola div.exito { color: #4ade80; }
+  #aviso { margin-top: 16px; font-size: 13px; }
+  a { color: #38bdf8; }
+
+  /* ===== Pestanas ===== */
+  .pestanas { display: flex; gap: 4px; border-bottom: 1px solid #1e293b; margin-bottom: 22px; }
+  .pestanas button {
+    margin: 0; width: auto; padding: 9px 16px; background: none; color: #94a3b8;
+    font-size: 14px; font-weight: 500; border-bottom: 2px solid transparent;
+    border-radius: 0;
+  }
+  .pestanas button:hover:not(.activa) { background: none; color: #e2e8f0; }
+  .pestanas button.activa { color: #38bdf8; border-bottom-color: #0284c7; }
+  .panel { display: none; }
+  .panel.visible { display: block; }
+
+  /* ===== Codigos ===== */
+  .codigo-fila {
+    display: flex; align-items: center; gap: 14px;
+    padding: 12px 14px; border-radius: 8px;
+    background: #1e293b; border: 1px solid #334155; margin-bottom: 10px;
+  }
+  .codigo-fila.definitivo { border-color: #0369a1; background: #082f49; }
+  .codigo-fila .etiqueta { flex: 0 0 190px; font-size: 13px; color: #cbd5e1; }
+  .codigo-fila .valor {
+    flex: 1; font-family: Consolas, monospace; font-size: 18px;
+    font-weight: 600; letter-spacing: 0.06em; color: #f1f5f9;
+  }
+  .codigo-fila button {
+    margin: 0; width: auto; padding: 7px 14px; font-size: 13px; background: #334155;
+  }
+  .codigo-fila button:hover:not(:disabled) { background: #475569; }
+  #idNormalizado {
+    margin: 14px 0 4px; font-size: 13px; color: #94a3b8;
+  }
+  #idNormalizado strong { color: #e2e8f0; font-family: Consolas, monospace; letter-spacing: 0.06em; }
+  #errorCodigos { margin-top: 14px; color: #f87171; font-size: 13px; }
+  .nota {
+    margin-top: 20px; padding: 12px 14px; border-radius: 8px;
+    background: #1e293b; border: 1px solid #334155;
+    font-size: 12.5px; line-height: 1.6; color: #94a3b8;
+  }
+  .nota strong { color: #cbd5e1; }
+</style>
+</head>
+<body>
+  <h1>Publicador DMedic</h1>
+  <div class="sub">Publica actualizaciones y genera los codigos de activacion de cada clinica.</div>
+
+  <div class="pestanas">
+    <button id="tabPublicar" class="activa">Publicar version</button>
+    <button id="tabCodigos">Codigos de activacion</button>
+  </div>
+
+  <!-- ================= Publicar ================= -->
+  <div class="panel visible" id="panelPublicar">
+    <div class="fila" style="margin-bottom: 18px">
+      <div class="campo">
+        <label>Version publicada</label>
+        <div class="actual" id="actual">...</div>
+      </div>
+      <div class="campo">
+        <label for="version">Nueva version</label>
+        <input id="version" placeholder="1.3.0" />
+      </div>
+    </div>
+
+    <div class="campo" id="campoToken" style="display:none">
+      <label for="token">Token de GitHub (se guarda y no se vuelve a pedir)</label>
+      <input id="token" type="password" placeholder="ghp_..." />
+    </div>
+
+    <div class="campo">
+      <label for="notas">Que cambia en esta version (lo lee el doctor)</label>
+      <textarea id="notas" placeholder="- La receta ahora imprime en tamano carta&#10;- Se corrigio el cruce de citas"></textarea>
+    </div>
+
+    <button id="publicar">Publicar</button>
+    <div id="consola"></div>
+    <div id="aviso"></div>
+  </div>
+
+  <!-- ================= Codigos ================= -->
+  <div class="panel" id="panelCodigos">
+    <div class="campo">
+      <label for="idEquipo">ID del equipo de la clinica</label>
+      <input id="idEquipo" placeholder="32B1-0953-9AC9" autocomplete="off" />
+    </div>
+    <div class="sub" style="margin: -10px 0 0">
+      Lo muestra la pantalla de "Periodo de prueba finalizado" en la computadora de la clinica.
+      Puede pegarlo con guiones o sin ellos.
+    </div>
+
+    <div id="idNormalizado" style="display:none"></div>
+    <div id="listaCodigos"></div>
+    <div id="errorCodigos"></div>
+
+    <div class="nota" id="notaCodigos">
+      <strong>Como funciona.</strong> Los codigos se calculan aqui con la semilla de
+      <em>publicador/semilla.txt</em>, la misma con la que se compila la aplicacion. Por eso este
+      panel no depende de la version instalada en la clinica: mientras la semilla no cambie, un
+      codigo generado hoy sirve para cualquier version compilada con ella.<br /><br />
+      <strong>Definitivo</strong> activa el equipo para siempre y vuelve a habilitar las
+      actualizaciones automaticas. Los de <strong>dias</strong> solo alargan la prueba, se pueden
+      usar una sola vez cada uno, y mientras duran las actualizaciones siguen apagadas.<br /><br />
+      Cada codigo sirve unicamente en el equipo cuyo ID se escribio arriba.
+    </div>
+  </div>
+
+<script>
+  const $ = (id) => document.getElementById(id)
+  const consola = $('consola')
+  let publicando = false
+
+  // ===== Pestanas =====
+  function mostrar(cual) {
+    const enCodigos = cual === 'codigos'
+    $('panelPublicar').classList.toggle('visible', !enCodigos)
+    $('panelCodigos').classList.toggle('visible', enCodigos)
+    $('tabPublicar').classList.toggle('activa', !enCodigos)
+    $('tabCodigos').classList.toggle('activa', enCodigos)
+    if (enCodigos) $('idEquipo').focus()
+  }
+  $('tabPublicar').addEventListener('click', () => mostrar('publicar'))
+  $('tabCodigos').addEventListener('click', () => mostrar('codigos'))
+
+  // ===== Publicar =====
+  function escribir(texto, clase) {
+    consola.style.display = 'block'
+    const linea = document.createElement('div')
+    linea.textContent = texto
+    if (clase) linea.className = clase
+    consola.appendChild(linea)
+    consola.scrollTop = consola.scrollHeight
+  }
+
+  function siguiente(version) {
+    const [may, men] = version.split('.').map(Number)
+    return `${may}.${men + 1}.0`
+  }
+
+  async function cargar() {
+    const estado = await window.publicador.estado()
+    $('actual').textContent = estado.version
+    $('version').value = siguiente(estado.version)
+    $('campoToken').style.display = estado.tieneToken ? 'none' : 'block'
+    if (!estado.tieneSemilla) {
+      $('errorCodigos').textContent =
+        'Falta publicador/semilla.txt: sin ella no se pueden generar codigos.'
+    }
+  }
+
+  window.publicador.alLog((texto) => {
+    escribir(texto, texto.startsWith('ERROR') ? 'error' : null)
+  })
+
+  $('publicar').addEventListener('click', async () => {
+    if (publicando) return
+    publicando = true
+    $('publicar').disabled = true
+    $('publicar').textContent = 'Publicando...'
+    $('aviso').textContent = ''
+
+    const resultado = await window.publicador.publicar({
+      version: $('version').value.trim(),
+      notas: $('notas').value,
+      token: $('token').value
+    })
+
+    publicando = false
+    $('publicar').disabled = false
+    if (resultado.ok) {
+      escribir('Publicacion completada.', 'exito')
+      $('publicar').textContent = 'Publicado'
+      $('aviso').innerHTML = 'Ver el release: <a href="#" id="ver">' + resultado.url + '</a>'
+      $('ver').addEventListener('click', (e) => {
+        e.preventDefault()
+        window.publicador.abrir(resultado.url)
+      })
+      $('token').value = ''
+      await cargar()
+    } else {
+      $('publicar').textContent = 'Reintentar'
+      $('campoToken').style.display = resultado.error.includes('token') ? 'block' : $('campoToken').style.display
+    }
+  })
+
+  // ===== Codigos =====
+  function filaCodigo(etiqueta, codigo, esDefinitivo) {
+    const fila = document.createElement('div')
+    fila.className = 'codigo-fila' + (esDefinitivo ? ' definitivo' : '')
+
+    const rotulo = document.createElement('div')
+    rotulo.className = 'etiqueta'
+    rotulo.textContent = etiqueta
+
+    const valor = document.createElement('div')
+    valor.className = 'valor'
+    valor.textContent = codigo
+
+    const copiar = document.createElement('button')
+    copiar.textContent = 'Copiar'
+    copiar.addEventListener('click', async () => {
+      await navigator.clipboard.writeText(codigo)
+      copiar.textContent = 'Copiado'
+      setTimeout(() => { copiar.textContent = 'Copiar' }, 1400)
+    })
+
+    fila.append(rotulo, valor, copiar)
+    return fila
+  }
+
+  let ultimoId = ''
+
+  async function generar() {
+    const texto = $('idEquipo').value
+    const lista = $('listaCodigos')
+    const error = $('errorCodigos')
+
+    // Solo se recalcula cuando el ID cambia de verdad: evita repintar en cada tecla.
+    const limpio = texto.toUpperCase().replace(/[^0-9A-F]/g, '')
+    if (limpio === ultimoId) return
+    ultimoId = limpio
+
+    lista.innerHTML = ''
+    error.textContent = ''
+    $('idNormalizado').style.display = 'none'
+
+    if (limpio.length === 0) return
+    if (limpio.length < 12) return
+
+    const resultado = await window.publicador.codigos(texto)
+    if (!resultado.ok) {
+      error.textContent = resultado.error
+      return
+    }
+
+    $('idNormalizado').style.display = 'block'
+    $('idNormalizado').innerHTML = 'Codigos para el equipo <strong>' + resultado.id + '</strong>'
+
+    lista.appendChild(filaCodigo('Activacion definitiva', resultado.definitivo, true))
+    for (const p of resultado.prorrogas) {
+      lista.appendChild(filaCodigo(`Prueba de ${p.dias} dias`, p.codigo, false))
+    }
+  }
+
+  $('idEquipo').addEventListener('input', generar)
+
+  cargar()
+</script>
+</body>
+</html>

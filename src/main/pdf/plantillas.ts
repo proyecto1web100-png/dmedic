@@ -2,18 +2,34 @@ import { formatearFecha, formatearFechaHora, formatearFechaLarga } from '@shared
 import { edadLegible, formatearIdentidad, nombreCompleto } from '@shared/lib/paciente'
 import { clasificarImc } from '@shared/lib/vitales'
 import { ESTILOS } from './estilos'
+import { ESTADOS_CIVILES, NIVELES_EDUCATIVOS } from '@shared/types'
 import type {
+  Adjunto,
   Cie10,
   ConfiguracionClinica,
   ConsultaCompleta,
+  EstadoCivil,
   ExpedienteResumen,
+  Incapacidad,
+  MedicacionCronica,
+  NivelEducativo,
   MedicamentoRecetado,
+  ProcedimientoConsulta,
+  Referencia,
   ReporteCitas,
   SignosVitales
 } from '@shared/types'
 
+function etiquetaNivelEducativo(valor: NivelEducativo | null): string {
+  return NIVELES_EDUCATIVOS.find((n) => n.valor === valor)?.etiqueta ?? '—'
+}
+
+function etiquetaEstadoCivil(valor: EstadoCivil | null): string {
+  return ESTADOS_CIVILES.find((e) => e.valor === valor)?.etiqueta ?? '—'
+}
+
 /** Impide que un dato del paciente rompa el HTML o inyecte marcado. */
-function esc(valor: string | number | null | undefined): string {
+export function esc(valor: string | number | null | undefined): string {
   if (valor === null || valor === undefined) return ''
   return String(valor)
     .replace(/&/g, '&amp;')
@@ -31,7 +47,7 @@ const MARGENES: Record<TamanoPagina, string> = {
   media_carta: '10mm 10mm 9mm'
 }
 
-function documento(titulo: string, cuerpo: string, tamano: TamanoPagina): string {
+export function documento(titulo: string, cuerpo: string, tamano: TamanoPagina): string {
   return `<!doctype html>
 <html lang="es"><head><meta charset="utf-8"><title>${esc(titulo)}</title>
 <style>
@@ -42,7 +58,7 @@ ${tamano === 'media_carta' ? 'body { font-size: 9pt; } .cabecera .clinica { font
 <body>${cuerpo}</body></html>`
 }
 
-function cabecera(config: ConfiguracionClinica, nombreDoctor: string): string {
+export function cabecera(config: ConfiguracionClinica, nombreDoctor: string): string {
   const logo = config.logoDataUrl
     ? `<img class="logo" src="${esc(config.logoDataUrl)}" alt="">`
     : ''
@@ -61,14 +77,14 @@ function cabecera(config: ConfiguracionClinica, nombreDoctor: string): string {
   </header>`
 }
 
-function pie(config: ConfiguracionClinica, nota?: string): string {
+export function pie(config: ConfiguracionClinica, nota?: string): string {
   return `<div class="pie">
     <span>${esc(config.nombreClinica)}</span>
     <span>${esc(nota ?? `Generado el ${formatearFechaHora(new Date().toISOString())}`)}</span>
   </div>`
 }
 
-function firma(config: ConfiguracionClinica, nombreDoctor: string): string {
+export function firma(config: ConfiguracionClinica, nombreDoctor: string): string {
   return `<div class="firma">
     <div class="linea"></div>
     <div class="nombre">${esc(nombreDoctor)}</div>
@@ -76,11 +92,11 @@ function firma(config: ConfiguracionClinica, nombreDoctor: string): string {
   </div>`
 }
 
-function campo(rotulo: string, dato: string): string {
+export function campo(rotulo: string, dato: string): string {
   return `<div><div class="rotulo">${esc(rotulo)}</div><div class="dato">${esc(dato)}</div></div>`
 }
 
-function bloquePaciente(
+export function bloquePaciente(
   expediente: ExpedienteResumen,
   fecha: string,
   columnas: 3 | 4 = 4
@@ -94,19 +110,19 @@ function bloquePaciente(
   </section>`
 }
 
-function avisoAlergias(expediente: ExpedienteResumen): string {
+export function avisoAlergias(expediente: ExpedienteResumen): string {
   const activas = expediente.alergias.filter((a) => a.activa)
   if (activas.length === 0) return ''
   const lista = activas.map((a) => `${a.sustancia} (${a.gravedad})`).join(' · ')
   return `<div class="alerta-alergias">⚠ ALERGIAS: ${esc(lista)}</div>`
 }
 
-function seccion(titulo: string, contenido: string): string {
+export function seccion(titulo: string, contenido: string): string {
   if (!contenido.trim()) return ''
   return `<section class="seccion no-partir"><h2>${esc(titulo)}</h2>${contenido}</section>`
 }
 
-function parrafo(texto: string | null): string {
+export function parrafo(texto: string | null): string {
   if (!texto) return ''
   return `<p class="texto">${esc(texto)}</p>`
 }
@@ -123,6 +139,33 @@ function itemMedicamento(m: MedicamentoRecetado, indice: number): string {
       ${extra ? `<div class="indicaciones">${esc(extra)}</div>` : ''}
     </div>
   </div>`
+}
+
+const NOMBRE_CATEGORIA: Record<ProcedimientoConsulta['categoria'], string> = {
+  laboratorio: 'Laboratorio',
+  imagen: 'Imagen',
+  procedimiento: 'Procedimiento',
+  otro: 'Otro'
+}
+
+function itemProcedimiento(p: ProcedimientoConsulta): string {
+  const extra = [p.indicaciones].filter(Boolean).join(' — ')
+  return `<div class="procedimiento">
+    <div class="casilla"></div>
+    <div class="cuerpo">
+      <div class="nombre">${esc(p.nombre)}
+        <span class="tipo">· ${esc(NOMBRE_CATEGORIA[p.categoria])}</span>
+        ${p.urgente ? '<span class="etiqueta roja">Urgente</span>' : ''}
+      </div>
+      ${extra ? `<div class="indicaciones">${esc(extra)}</div>` : ''}
+    </div>
+  </div>`
+}
+
+/** Lista para receta y resumen. Devuelve vacio cuando no hay nada indicado. */
+function listaProcedimientos(consulta: ConsultaCompleta): string {
+  if (consulta.procedimientos.length === 0) return ''
+  return consulta.procedimientos.map(itemProcedimiento).join('')
 }
 
 const UNIDADES: { campo: keyof SignosVitales; rotulo: string; unidad: string }[] = [
@@ -175,6 +218,13 @@ function listaDiagnosticos(consulta: ConsultaCompleta): string {
 
 // ===== Receta =====
 
+/** «Receta médica» salvo cuando lo único indicado son estudios. */
+export function tituloDeReceta(consulta: ConsultaCompleta): string {
+  return consulta.medicamentos.length === 0 && consulta.procedimientos.length > 0
+    ? 'Orden de exámenes'
+    : 'Receta médica'
+}
+
 export function htmlReceta(
   config: ConfiguracionClinica,
   expediente: ExpedienteResumen,
@@ -182,23 +232,30 @@ export function htmlReceta(
   tamano: TamanoPagina
 ): string {
   const doctor = consulta.nombreDoctor ?? config.nombreDoctor
+  // Una consulta que solo indica estudios no es una receta: es una orden de exámenes.
+  const titulo = tituloDeReceta(consulta)
   const cuerpo = `
     ${cabecera(config, doctor)}
-    <div class="titulo-documento">Receta médica</div>
+    <div class="titulo-documento">${esc(titulo)}</div>
     ${bloquePaciente(expediente, consulta.fecha)}
     ${avisoAlergias(expediente)}
-    <section class="seccion">
+    ${
+      consulta.medicamentos.length > 0 || consulta.procedimientos.length === 0
+        ? `<section class="seccion">
       <h2>Prescripción</h2>
       ${
         consulta.medicamentos.length > 0
           ? consulta.medicamentos.map(itemMedicamento).join('')
           : '<p class="vacio">Sin medicamentos prescritos.</p>'
       }
-    </section>
+    </section>`
+        : ''
+    }
+    ${seccion('Exámenes y procedimientos indicados', listaProcedimientos(consulta))}
     ${seccion('Indicaciones generales', parrafo(consulta.recomendaciones))}
     ${firma(config, doctor)}
     ${pie(config)}`
-  return documento('Receta médica', cuerpo, tamano)
+  return documento(titulo, cuerpo, tamano)
 }
 
 // ===== Resumen de una consulta =====
@@ -226,6 +283,7 @@ export function htmlResumenConsulta(
         ? consulta.medicamentos.map(itemMedicamento).join('')
         : ''
     )}
+    ${seccion('Exámenes y procedimientos indicados', listaProcedimientos(consulta))}
     ${seccion('Observaciones', parrafo(consulta.observaciones))}
     ${seccion('Recomendaciones', parrafo(consulta.recomendaciones))}
     ${seccion(
@@ -248,10 +306,24 @@ export function htmlResumenConsulta(
 
 // ===== Expediente completo =====
 
+/** Documentos del paciente que no viven en ExpedienteResumen y se piden aparte. */
+export interface ExtrasExpediente {
+  adjuntos: Adjunto[]
+  incapacidades: Incapacidad[]
+  referencias: Referencia[]
+  /**
+   * Medicacion permanente incluyendo la suspendida. El expediente impreso es un
+   * registro historico: que el paciente tomara un medicamento durante un tiempo
+   * y se le retirara es justo lo que hay que poder consultar despues.
+   */
+  medicacionCronica: MedicacionCronica[]
+}
+
 export function htmlExpediente(
   config: ConfiguracionClinica,
   expediente: ExpedienteResumen,
-  consultas: ConsultaCompleta[]
+  consultas: ConsultaCompleta[],
+  extras?: ExtrasExpediente
 ): string {
   const p = expediente.paciente
 
@@ -265,7 +337,71 @@ export function htmlExpediente(
     ${campo('Teléfono', p.telefono ?? '—')}
     ${campo('Tipo de sangre', p.tipoSangre ?? '—')}
     ${campo('Aseguradora', p.aseguradora ?? '—')}
+    ${campo('Estado civil', etiquetaEstadoCivil(p.estadoCivil))}
+    ${campo('Nivel educativo', etiquetaNivelEducativo(p.nivelEducativo))}
+    ${campo('Ocupación', p.ocupacion ?? '—')}
+    ${campo('Empresa', p.empresaNombre ? `${p.empresaCodigo} · ${p.empresaNombre}` : '—')}
+    ${campo('Código de empleado', p.codigoEmpleado ?? '—')}
+    ${campo(
+      'Historia relatada por',
+      p.historiador
+        ? `${p.historiador}${p.historiadorParentesco ? ` (${p.historiadorParentesco})` : ''}`
+        : 'El propio paciente'
+    )}
   </section>`
+
+  const listaCronica = extras?.medicacionCronica ?? expediente.medicacionCronica
+  const medicacionCronica =
+    listaCronica.length > 0
+      ? `<table>
+          <thead><tr><th>Medicamento</th><th>Pauta</th><th>Enfermedad de base</th><th style="width:14%">Desde</th><th style="width:14%">Estado</th></tr></thead>
+          <tbody>${listaCronica
+            .map(
+              (m) =>
+                `<tr><td><strong>${esc([m.nombre, m.concentracion].filter(Boolean).join(' '))}</strong></td><td>${esc([m.dosis, m.frecuencia, m.via].filter(Boolean).join(' · '))}</td><td>${esc(m.motivo ?? '—')}</td><td>${esc(m.desde ? formatearFecha(m.desde) : '—')}</td><td>${m.activa ? 'Activa' : 'Suspendida'}</td></tr>`
+            )
+            .join('')}</tbody>
+        </table>`
+      : '<p class="vacio">Sin medicación permanente registrada.</p>'
+
+  const adjuntos =
+    extras && extras.adjuntos.length > 0
+      ? `<table>
+          <thead><tr><th style="width:18%">Fecha</th><th>Estudio</th><th style="width:16%">Tipo</th><th>Interpretación</th></tr></thead>
+          <tbody>${extras.adjuntos
+            .map(
+              (a) =>
+                `<tr><td>${esc(formatearFecha(a.fechaEstudio ?? a.creadoEn))}</td><td><strong>${esc(a.titulo)}</strong></td><td>${esc(a.categoria)}</td><td>${esc(a.descripcion ?? '—')}</td></tr>`
+            )
+            .join('')}</tbody>
+        </table>`
+      : ''
+
+  const incapacidades =
+    extras && extras.incapacidades.length > 0
+      ? `<table>
+          <thead><tr><th style="width:20%">Folio</th><th style="width:12%">Días</th><th style="width:30%">Periodo</th><th>Motivo</th></tr></thead>
+          <tbody>${extras.incapacidades
+            .map(
+              (i) =>
+                `<tr><td><strong>${esc(i.folio)}</strong>${i.estado === 'anulada' ? ' <span class="etiqueta roja">Anulada</span>' : ''}</td><td>${i.dias}</td><td>${esc(formatearFecha(i.desde))} a ${esc(formatearFecha(i.hasta))}</td><td>${esc(i.motivo)}</td></tr>`
+            )
+            .join('')}</tbody>
+        </table>`
+      : ''
+
+  const referencias =
+    extras && extras.referencias.length > 0
+      ? `<table>
+          <thead><tr><th style="width:20%">Folio</th><th style="width:16%">Fecha</th><th>Dirigida a</th><th>Motivo</th></tr></thead>
+          <tbody>${extras.referencias
+            .map(
+              (r) =>
+                `<tr><td><strong>${esc(r.folio)}</strong>${r.estado === 'anulada' ? ' <span class="etiqueta roja">Anulada</span>' : ''}</td><td>${esc(formatearFecha(r.fecha))}</td><td>${esc([r.dirigidaA, r.especialidad].filter(Boolean).join(' · '))}</td><td>${esc(r.motivo)}</td></tr>`
+            )
+            .join('')}</tbody>
+        </table>`
+      : ''
 
   const contactos =
     expediente.contactos.length > 0
@@ -348,6 +484,16 @@ export function htmlExpediente(
                     .join('')}</div>`
                 : ''
 
+            const procedimientos =
+              c.procedimientos.length > 0
+                ? `<div class="campo"><div class="rotulo">Exámenes y procedimientos</div>${c.procedimientos
+                    .map(
+                      (pr) =>
+                        `<div class="contenido">• ${esc(pr.nombre)} (${esc(NOMBRE_CATEGORIA[pr.categoria])})${pr.urgente ? ' — urgente' : ''}${pr.indicaciones ? ` — ${esc(pr.indicaciones)}` : ''}</div>`
+                    )
+                    .join('')}</div>`
+                : ''
+
             const adendas =
               c.adendas.length > 0
                 ? `<div class="campo"><div class="rotulo">Adendas</div>${c.adendas
@@ -375,6 +521,7 @@ export function htmlExpediente(
               ${diagnosticos}
               ${bloque('Tratamiento', c.tratamiento)}
               ${medicamentos}
+              ${procedimientos}
               ${bloque('Observaciones', c.observaciones)}
               ${bloque('Recomendaciones', c.recomendaciones)}
               ${adendas}
@@ -391,6 +538,10 @@ export function htmlExpediente(
     ${seccion('Alergias', alergias)}
     ${seccion('Antecedentes', antecedentes)}
     ${seccion('Problemas crónicos', cronicos)}
+    ${seccion('Medicación permanente', medicacionCronica)}
+    ${seccion('Estudios en el expediente', adjuntos)}
+    ${seccion('Incapacidades emitidas', incapacidades)}
+    ${seccion('Referencias emitidas', referencias)}
     <section class="seccion">
       <h2>Historial de consultas (${consultas.length})</h2>
       ${historial}

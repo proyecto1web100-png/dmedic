@@ -1,8 +1,12 @@
 import { db, enTransaccion } from '../db/conexion'
+import { estaPorVencer, estaVencido } from './inventario'
 import type {
   Cie10,
+  Examen,
+  ExamenInput,
   Medicamento,
   MedicamentoInput,
+  PlantillaExamen,
   PlantillaItem,
   PlantillaTratamiento
 } from '@shared/types'
@@ -107,16 +111,32 @@ interface FilaMedicamento {
   concentracion: string | null
   via: string | null
   activo: number
+  controla_inventario: number
+  existencia: number
+  minimo: number
+  unidad: string | null
+  vencimiento: string | null
 }
 
 function aMedicamento(f: FilaMedicamento): Medicamento {
+  const controla = f.controla_inventario === 1
   return {
     id: f.id,
     nombre: f.nombre,
     forma: f.forma,
     concentracion: f.concentracion,
     via: f.via,
-    activo: f.activo === 1
+    activo: f.activo === 1,
+    controlaInventario: controla,
+    existencia: f.existencia,
+    minimo: f.minimo,
+    unidad: f.unidad,
+    vencimiento: f.vencimiento,
+    // Sin control de existencias no hay nada que avisar: un medicamento que la
+    // clinica no entrega nunca esta "bajo" ni "vencido".
+    bajoMinimo: controla && f.minimo > 0 && f.existencia <= f.minimo,
+    vencido: controla && estaVencido(f.vencimiento),
+    porVencer: controla && estaPorVencer(f.vencimiento)
   }
 }
 
@@ -146,17 +166,31 @@ export function listarMedicamentos(): Medicamento[] {
 }
 
 export function crearMedicamento(input: MedicamentoInput): number {
-  const resultado = db()
+  db()
     .prepare(
-      `INSERT INTO medicamento (nombre, forma, concentracion, via, activo)
-       VALUES (?, ?, ?, ?, 1)
-       ON CONFLICT(nombre, concentracion, forma) DO UPDATE SET activo = 1, via = excluded.via`
+      `INSERT INTO medicamento (nombre, forma, concentracion, via, activo,
+                                controla_inventario, minimo, unidad)
+       VALUES (?, ?, ?, ?, 1, ?, ?, ?)
+       ON CONFLICT(nombre, concentracion, forma) DO UPDATE SET
+         activo = 1, via = excluded.via,
+         controla_inventario = excluded.controla_inventario,
+         minimo = excluded.minimo, unidad = excluded.unidad`
     )
-    .run(input.nombre, input.forma ?? null, input.concentracion ?? null, input.via ?? null)
+    .run(
+      input.nombre,
+      input.forma ?? null,
+      input.concentracion ?? null,
+      input.via ?? null,
+      input.controlaInventario ? 1 : 0,
+      input.minimo ?? 0,
+      input.unidad ?? null
+    )
 
-  if (resultado.lastInsertRowid) return Number(resultado.lastInsertRowid)
-
-  const existente = db()
+  // El id se resuelve siempre por la clave unica y nunca por lastInsertRowid:
+  // cuando el ON CONFLICT actualiza en vez de insertar, SQLite deja ahi el
+  // rowid de una insercion anterior de la misma conexion, que apunta a otro
+  // medicamento por completo.
+  const guardado = db()
     .prepare(
       `SELECT id FROM medicamento
         WHERE nombre = ? AND IFNULL(concentracion,'') = IFNULL(?,'') AND IFNULL(forma,'') = IFNULL(?,'')`
@@ -164,16 +198,41 @@ export function crearMedicamento(input: MedicamentoInput): number {
     .get(input.nombre, input.concentracion ?? null, input.forma ?? null) as
     | { id: number }
     | undefined
-  if (!existente) throw new Error('No se pudo guardar el medicamento')
-  return existente.id
+  if (!guardado) throw new Error('No se pudo guardar el medicamento')
+  return guardado.id
 }
 
 export function actualizarMedicamento(id: number, input: MedicamentoInput): void {
+  // La existencia no se toca aqui: solo cambia por movimientos de inventario,
+  // que dejan constancia de quien la movio y por que.
   db()
     .prepare(
-      'UPDATE medicamento SET nombre = ?, forma = ?, concentracion = ?, via = ? WHERE id = ?'
+      `UPDATE medicamento SET nombre = ?, forma = ?, concentracion = ?, via = ?,
+              controla_inventario = ?, minimo = ?, unidad = ?
+        WHERE id = ?`
     )
-    .run(input.nombre, input.forma ?? null, input.concentracion ?? null, input.via ?? null, id)
+    .run(
+      input.nombre,
+      input.forma ?? null,
+      input.concentracion ?? null,
+      input.via ?? null,
+      input.controlaInventario ? 1 : 0,
+      input.minimo ?? 0,
+      input.unidad ?? null,
+      id
+    )
+}
+
+/** Medicamentos con control de existencias, para la pantalla de inventario. */
+export function inventario(): Medicamento[] {
+  const filas = db()
+    .prepare(
+      `SELECT * FROM medicamento
+        WHERE controla_inventario = 1 AND activo = 1
+        ORDER BY nombre, concentracion`
+    )
+    .all() as FilaMedicamento[]
+  return filas.map(aMedicamento)
 }
 
 /**
@@ -182,6 +241,88 @@ export function actualizarMedicamento(id: number, input: MedicamentoInput): void
  */
 export function desactivarMedicamento(id: number): void {
   db().prepare('UPDATE medicamento SET activo = 0 WHERE id = ?').run(id)
+}
+
+// ===== Examenes y procedimientos =====
+
+interface FilaExamen {
+  id: number
+  nombre: string
+  categoria: Examen['categoria']
+  preparacion: string | null
+  activo: number
+}
+
+function aExamen(f: FilaExamen): Examen {
+  return {
+    id: f.id,
+    nombre: f.nombre,
+    categoria: f.categoria,
+    preparacion: f.preparacion,
+    activo: f.activo === 1
+  }
+}
+
+export function buscarExamenes(texto: string, limite = 25): Examen[] {
+  const termino = texto.trim()
+  const filas =
+    termino.length === 0
+      ? (db()
+          .prepare('SELECT * FROM examen WHERE activo = 1 ORDER BY categoria, nombre LIMIT ?')
+          .all(limite) as FilaExamen[])
+      : (db()
+          .prepare(
+            `SELECT * FROM examen
+              WHERE activo = 1 AND nombre LIKE ?
+              ORDER BY CASE WHEN nombre LIKE ? THEN 0 ELSE 1 END, nombre
+              LIMIT ?`
+          )
+          .all(`%${termino}%`, `${termino}%`, limite) as FilaExamen[])
+  return filas.map(aExamen)
+}
+
+export function listarExamenes(): Examen[] {
+  const filas = db()
+    .prepare('SELECT * FROM examen ORDER BY categoria, nombre')
+    .all() as FilaExamen[]
+  return filas.map(aExamen)
+}
+
+export function crearExamen(input: ExamenInput): number {
+  const nombre = input.nombre.trim()
+  if (nombre.length < 3) throw new Error('El nombre del examen debe tener al menos 3 caracteres')
+
+  db()
+    .prepare(
+      `INSERT INTO examen (nombre, categoria, preparacion, activo)
+       VALUES (?, ?, ?, 1)
+       ON CONFLICT(nombre, categoria) DO UPDATE SET activo = 1, preparacion = excluded.preparacion`
+    )
+    .run(nombre, input.categoria, input.preparacion?.trim() || null)
+
+  // Igual que con los medicamentos: tras un ON CONFLICT que actualiza,
+  // lastInsertRowid apunta a otra fila. El id se busca por la clave unica.
+  const guardado = db()
+    .prepare('SELECT id FROM examen WHERE nombre = ? AND categoria = ?')
+    .get(nombre, input.categoria) as { id: number } | undefined
+  if (!guardado) throw new Error('No se pudo guardar el examen')
+  return guardado.id
+}
+
+export function actualizarExamen(id: number, input: ExamenInput): void {
+  const nombre = input.nombre.trim()
+  if (nombre.length < 3) throw new Error('El nombre del examen debe tener al menos 3 caracteres')
+  db()
+    .prepare('UPDATE examen SET nombre = ?, categoria = ?, preparacion = ? WHERE id = ?')
+    .run(nombre, input.categoria, input.preparacion?.trim() || null, id)
+}
+
+/**
+ * Se desactiva en lugar de borrar: las consultas ya registradas conservan la
+ * referencia y el historial no puede quedar con huecos.
+ */
+export function desactivarExamen(id: number): void {
+  db().prepare('UPDATE examen SET activo = 0 WHERE id = ?').run(id)
 }
 
 // ===== Plantillas de tratamiento (protocolos del doctor) =====
@@ -225,6 +366,29 @@ function itemsDePlantilla(plantillaId: number): PlantillaItem[] {
   }))
 }
 
+interface FilaPlantillaExamen {
+  id: number
+  examen_id: number | null
+  nombre: string
+  categoria: PlantillaExamen['categoria']
+  indicaciones: string | null
+  urgente: number
+}
+
+function examenesDePlantilla(plantillaId: number): PlantillaExamen[] {
+  const filas = db()
+    .prepare('SELECT * FROM plantilla_tratamiento_examen WHERE plantilla_id = ? ORDER BY orden')
+    .all(plantillaId) as FilaPlantillaExamen[]
+  return filas.map((f) => ({
+    id: f.id,
+    examenId: f.examen_id,
+    nombre: f.nombre,
+    categoria: f.categoria,
+    indicaciones: f.indicaciones,
+    urgente: f.urgente === 1
+  }))
+}
+
 function aPlantilla(f: FilaPlantilla): PlantillaTratamiento {
   return {
     id: f.id,
@@ -232,7 +396,8 @@ function aPlantilla(f: FilaPlantilla): PlantillaTratamiento {
     nombre: f.nombre,
     tratamiento: f.tratamiento,
     recomendaciones: f.recomendaciones,
-    items: itemsDePlantilla(f.id)
+    items: itemsDePlantilla(f.id),
+    examenes: examenesDePlantilla(f.id)
   }
 }
 
@@ -265,6 +430,7 @@ export function guardarPlantilla(
         )
         .run(datos.codigoCie10, datos.nombre, datos.tratamiento, datos.recomendaciones, id)
       db().prepare('DELETE FROM plantilla_tratamiento_item WHERE plantilla_id = ?').run(id)
+      db().prepare('DELETE FROM plantilla_tratamiento_examen WHERE plantilla_id = ?').run(id)
     } else {
       const resultado = db()
         .prepare(
@@ -295,6 +461,25 @@ export function guardarPlantilla(
         item.indicaciones ?? null
       )
     }
+
+    const insertarExamen = db().prepare(
+      `INSERT INTO plantilla_tratamiento_examen (
+         plantilla_id, examen_id, nombre, categoria, indicaciones, urgente, orden
+       ) VALUES (?, ?, ?, ?, ?, ?, ?)`
+    )
+    // Los protocolos guardados antes de esta funcion llegan sin examenes.
+    const examenes = datos.examenes ?? []
+    examenes.forEach((examen, indice) => {
+      insertarExamen.run(
+        id,
+        examen.examenId ?? null,
+        examen.nombre,
+        examen.categoria,
+        examen.indicaciones ?? null,
+        examen.urgente ? 1 : 0,
+        indice
+      )
+    })
     return id
   })
 }

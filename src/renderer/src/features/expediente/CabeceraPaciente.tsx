@@ -3,6 +3,7 @@ import { Boton } from '../../components/ui/Boton'
 import { Insignia } from '../../components/ui/Varios'
 import { edadLegible, formatearIdentidad } from '@shared/lib/paciente'
 import { formatearFecha } from '@shared/lib/fecha'
+import { ESTADOS_CIVILES, NIVELES_EDUCATIVOS } from '@shared/types'
 import type { ExpedienteResumen } from '@shared/types'
 
 /**
@@ -46,6 +47,44 @@ export function CabeceraPaciente({
             <p className="mt-1 text-[0.8125rem] text-[var(--tinta-tenue)]">
               Responsable: {responsable.nombreCompleto}
               {paciente.responsableParentesco ? ` (${paciente.responsableParentesco})` : ''}
+            </p>
+          )}
+
+          {paciente.empresaNombre && (
+            <p className="mt-1 text-[0.8125rem]">
+              <span className="font-medium text-marca-700 oscuro:text-marca-300">
+                {paciente.empresaCodigo}
+              </span>
+              <span className="text-[var(--tinta-tenue)]">
+                {' · '}
+                {paciente.empresaNombre}
+                {paciente.codigoEmpleado ? ` · empleado ${paciente.codigoEmpleado}` : ''}
+              </span>
+            </p>
+          )}
+
+          {/* La escolaridad y quién relata la historia cambian cómo se lee todo
+              lo demás, así que van a la vista junto a la identificación. */}
+          {(paciente.ocupacion || paciente.nivelEducativo || paciente.historiador) && (
+            <p className="mt-1 text-[0.8125rem] text-[var(--tinta-tenue)]">
+              {[
+                paciente.ocupacion,
+                paciente.nivelEducativo
+                  ? NIVELES_EDUCATIVOS.find((n) => n.valor === paciente.nivelEducativo)?.etiqueta
+                  : null,
+                paciente.estadoCivil
+                  ? ESTADOS_CIVILES.find((e) => e.valor === paciente.estadoCivil)?.etiqueta
+                  : null,
+                paciente.historiador
+                  ? `Historia relatada por ${paciente.historiador}${
+                      paciente.historiadorParentesco
+                        ? ` (${paciente.historiadorParentesco})`
+                        : ''
+                    }`
+                  : null
+              ]
+                .filter(Boolean)
+                .join(' · ')}
             </p>
           )}
         </div>

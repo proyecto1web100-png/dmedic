@@ -9,12 +9,13 @@ import { useNotificar } from '../../app/Notificaciones'
 import { useSesion } from '../../app/Sesion'
 import { formatearFechaHora } from '@shared/lib/fecha'
 import { PanelActualizaciones } from './PanelActualizaciones'
+import { PanelAuditoria } from './PanelAuditoria'
 import type { ArchivoBackupPublico, ConfiguracionClinica } from '@shared/types'
 
 const LOGO_MAXIMO_BYTES = 512 * 1024
 
 export function Configuracion(): React.JSX.Element {
-  const { config, refrescarConfig } = useSesion()
+  const { config, puede, refrescarConfig } = useSesion()
   const notificar = useNotificar()
   const [datos, setDatos] = useState<ConfiguracionClinica | null>(null)
   const [guardando, setGuardando] = useState(false)
@@ -191,6 +192,7 @@ export function Configuracion(): React.JSX.Element {
 
       <CambioPassword />
       <PanelBackups />
+      {puede('usuarios.gestionar') && <PanelAuditoria />}
       <PanelActualizaciones />
     </div>
   )

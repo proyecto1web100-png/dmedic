@@ -16,16 +16,23 @@ import {
   htmlExpediente,
   htmlReceta,
   htmlReporteCitas,
-  htmlResumenConsulta
+  htmlResumenConsulta,
+  tituloDeReceta
 } from '../pdf/plantillas'
 import { auditar } from '../audit/auditoria'
 import * as consultasRepo from '../repositories/consulta'
 import * as pacientesRepo from '../repositories/paciente'
+import * as expedienteRepo from '../repositories/expediente'
 import * as citas from './citas'
 import { configuracion } from '../repositories/sistema'
 import type { PeriodoReporte } from '@shared/types'
 
-export type TipoDocumento = 'receta' | 'resumen_consulta' | 'expediente'
+export type TipoDocumento =
+  | 'receta'
+  | 'resumen_consulta'
+  | 'expediente'
+  | 'incapacidad'
+  | 'referencia'
 
 /**
  * printToPDF mide en PULGADAS, no en micras ni en pixeles. Con micras la pagina
@@ -45,7 +52,7 @@ const TAMANOS: Record<'carta' | 'media_carta', Electron.PrintToPDFOptions['pageS
  * El HTML se pasa por un archivo temporal y no por una URL "data:": Chromium
  * limita la longitud de esas URL y un expediente largo la excede.
  */
-async function generarPdf(html: string, tamano: 'carta' | 'media_carta'): Promise<Buffer> {
+export async function generarPdf(html: string, tamano: 'carta' | 'media_carta'): Promise<Buffer> {
   const rutaTemporal = join(
     asegurarDirectorio(join(tmpdir(), 'dmedic-render')),
     `${randomUUID()}.html`
@@ -82,7 +89,7 @@ async function generarPdf(html: string, tamano: 'carta' | 'media_carta'): Promis
   }
 }
 
-function registrar(
+export function registrar(
   pacienteId: number,
   consultaId: number | null,
   tipo: TipoDocumento,
@@ -106,7 +113,7 @@ export interface DocumentoGenerado {
  * expediente en disco quede organizado sin que nadie tenga que ordenarlo a mano.
  */
 /** Marca de hora para que dos documentos del mismo día nunca se pisen. */
-function marcaHora(): string {
+export function marcaHora(): string {
   return new Date().toTimeString().slice(0, 8).replace(/:/g, '')
 }
 
@@ -120,8 +127,16 @@ export async function generarDocumento(
   const expediente = pacientesRepo.expedienteResumen(consulta.pacienteId)
   if (!expediente) throw new Error('El paciente no existe')
 
-  if (tipo === 'receta' && consulta.medicamentos.length === 0) {
-    throw new Error('Esta consulta no tiene medicamentos, no hay receta que imprimir')
+  // Una consulta puede no llevar medicamentos y aun asi indicar estudios: en ese
+  // caso el documento sale como orden de examenes, que es lo que el paciente lleva.
+  if (
+    tipo === 'receta' &&
+    consulta.medicamentos.length === 0 &&
+    consulta.procedimientos.length === 0
+  ) {
+    throw new Error(
+      'Esta consulta no tiene medicamentos ni exámenes indicados, no hay nada que imprimir'
+    )
   }
 
   const config = configuracion()
@@ -140,7 +155,12 @@ export async function generarDocumento(
     nombreListado(paciente),
     tipo === 'receta' ? 'Recetas' : 'Consultas'
   )
-  const etiqueta = tipo === 'receta' ? 'Receta' : 'Consulta'
+  const etiqueta =
+    tipo === 'receta'
+      ? tituloDeReceta(consulta) === 'Receta médica'
+        ? 'Receta'
+        : 'Orden de examenes'
+      : 'Consulta'
   const ruta = join(carpeta, `${consulta.fecha} ${etiqueta} ${marcaHora()}.pdf`)
 
   writeFileSync(ruta, pdf)
@@ -168,7 +188,17 @@ export async function generarExpediente(pacienteId: number): Promise<DocumentoGe
   const config = configuracion()
   const paciente = expediente.paciente
 
-  const pdf = await generarPdf(htmlExpediente(config, expediente, consultas), 'carta')
+  // El expediente impreso debe llevar todo lo que cuelga del paciente, no solo
+  // sus consultas: estudios, incapacidades y referencias forman parte de él.
+  const pdf = await generarPdf(
+    htmlExpediente(config, expediente, consultas, {
+      adjuntos: expedienteRepo.adjuntosDePaciente(pacienteId),
+      incapacidades: expedienteRepo.incapacidadesDePaciente(pacienteId),
+      referencias: expedienteRepo.referenciasDePaciente(pacienteId),
+      medicacionCronica: expedienteRepo.medicacionCronica(pacienteId, false)
+    }),
+    'carta'
+  )
 
   const carpeta = subcarpetaPaciente(
     paciente.numeroExpediente,

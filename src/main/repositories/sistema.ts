@@ -14,6 +14,7 @@ export interface FilaUsuario {
   es_administrador: number
   activo: number
   debe_cambiar_password: number
+  numero_colegiacion: string | null
 }
 
 export function aUsuario(f: FilaUsuario): Usuario {
@@ -24,7 +25,8 @@ export function aUsuario(f: FilaUsuario): Usuario {
     esAdministrador: f.es_administrador === 1,
     activo: f.activo === 1,
     debeCambiarPassword: f.debe_cambiar_password === 1,
-    creadoEn: f.creado_en
+    creadoEn: f.creado_en,
+    numeroColegiacion: f.numero_colegiacion
   }
 }
 
@@ -93,11 +95,14 @@ export function crearUsuario(datos: {
 
 export function actualizarUsuario(
   id: number,
-  datos: { nombre: string; rol: Rol; esAdministrador: boolean }
+  datos: { nombre: string; rol: Rol; esAdministrador: boolean; numeroColegiacion: string | null }
 ): void {
   db()
-    .prepare('UPDATE usuario SET nombre = ?, rol = ?, es_administrador = ? WHERE id = ?')
-    .run(datos.nombre, datos.rol, datos.esAdministrador ? 1 : 0, id)
+    .prepare(
+      `UPDATE usuario SET nombre = ?, rol = ?, es_administrador = ?, numero_colegiacion = ?
+        WHERE id = ?`
+    )
+    .run(datos.nombre, datos.rol, datos.esAdministrador ? 1 : 0, datos.numeroColegiacion, id)
 }
 
 export function alternarUsuario(id: number, activo: boolean): void {
