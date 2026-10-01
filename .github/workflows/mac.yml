@@ -26,6 +26,12 @@ jobs:
           node-version: 20
           cache: npm
 
+      # better-sqlite3 se compila con node-gyp 9, que importa distutils: el modulo
+      # ya no existe desde Python 3.12, que es el que trae el Mac de GitHub.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
       - run: npm ci
 
       # La semilla de los codigos de activacion no esta en el repositorio (es
