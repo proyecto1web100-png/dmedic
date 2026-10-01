@@ -19,6 +19,32 @@ la base de datos, los expedientes y los backups viven en la computadora de la cl
 | `npm run build` | Compila la aplicación a `out/` |
 | `npm run dist` | Genera el instalador de Windows en `dist/` |
 
+## Versión para Mac
+
+El mismo código genera un instalador `.dmg` aparte (Apple Silicon e Intel).
+El instalador de Windows no cambia y sus clientes no notan nada.
+
+- **Sin un Mac:** cada release publicado con `npm run publicar` dispara el flujo
+  `.github/workflows/mac.yml`, que compila en un Mac de GitHub y agrega los `.dmg`
+  a ese mismo release. También se puede lanzar a mano desde *Actions → Version para
+  Mac → Run workflow* y descargar los `.dmg` como artefacto.
+- **En un Mac:** `npm run dist:mac` (o `npm run publicar:mac`).
+
+La app no está firmada por Apple. La primera vez, el cliente la arrastra a
+Aplicaciones y ejecuta en Terminal:
+
+```bash
+xattr -cr /Applications/DMedic.app
+```
+
+Por lo mismo, en Mac el botón *Descargar* de Configuración abre la página del
+release en lugar de instalar solo: se descarga el `.dmg` nuevo, se reemplaza la
+app en Aplicaciones y se repite el comando `xattr`. Firmar con una cuenta de
+Apple Developer (99 USD/año) elimina ambos pasos.
+
+Los datos se guardan en `~/Library/Application Support/DMedic/`, con la misma
+estructura que en Windows. Se recomienda activar FileVault y Time Machine.
+
 ## Dónde se guardan los datos
 
 Fuera de la carpeta del programa, para que una reinstalación o actualización
