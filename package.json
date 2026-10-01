@@ -1,6 +1,6 @@
 {
   "name": "dmedic",
-  "version": "1.5.0",
+  "version": "1.7.0",
   "description": "Sistema de gestion clinica DMedic",
   "main": "./out/main/index.js",
   "author": "DMedic",
@@ -10,10 +10,14 @@
     "build": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json && electron-vite build",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "verificar": "electron-vite build && electron out/main/verificar.js",
+    "verificar:expediente": "electron-vite build && electron out/main/verificar-expediente.js",
+    "demo:sembrar": "electron-vite build && electron out/main/sembrar-demo.js",
+    "verificar:licencia": "electron-vite build && electron out/main/verificar-licencia.js",
     "postinstall": "electron-builder install-app-deps",
     "dist": "npm run build && electron-builder --win --config electron-builder.yml --publish never",
     "publicar": "npm run build && electron-builder --win --config electron-builder.yml --publish always",
-    "publicador": "electron publicador"
+    "publicador": "electron publicador",
+    "codigo": "node herramientas/codigo.mjs"
   },
   "dependencies": {
     "@node-rs/argon2": "^2.0.2",
